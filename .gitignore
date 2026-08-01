@@ -1,0 +1,36 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Next.js
+/.next/
+/out/
+
+# production
+/build
+
+# local data and secrets
+.env
+.env.local
+.env.*.local
+/data/
+/storage/
+
+# logs and test output
+*.log
+/coverage/
+/test-results/
+/playwright-report/
+/output/
+/.playwright-cli/
+/graphify-out/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# TypeScript
+*.tsbuildinfo

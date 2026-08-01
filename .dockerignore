@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+data
+storage
+output
+.playwright-cli
+*.log
+docs
+design-system

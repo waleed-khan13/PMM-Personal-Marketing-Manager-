@@ -1,0 +1,1251 @@
+"use client";
+
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  Check,
+  ChevronRight,
+  CircleDot,
+  Clock3,
+  Database,
+  FilePenLine,
+  Inbox,
+  LayoutDashboard,
+  Loader2,
+  LockKeyhole,
+  Menu,
+  MessageCircle,
+  Pencil,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  Rocket,
+  Send,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  TerminalSquare,
+  Webhook,
+  X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type {
+  ContentChannel,
+  GeneratedPost,
+  PostStatus,
+  ProviderConnectionResult,
+  ProviderKind,
+  PublicAppState,
+} from "@/lib/app-types";
+import { cn } from "@/lib/utils";
+
+type ViewId = "command" | "create" | "queue" | "integrations" | "activity";
+type QueueFilter = "all" | PostStatus;
+
+type StateResponse = {
+  ok: boolean;
+  state: PublicAppState;
+};
+
+type NavItem = {
+  id: ViewId;
+  label: string;
+  icon: LucideIcon;
+};
+
+const navigation: NavItem[] = [
+  { id: "command", label: "Command", icon: LayoutDashboard },
+  { id: "create", label: "Create content", icon: Sparkles },
+  { id: "queue", label: "Approval queue", icon: Inbox },
+  { id: "integrations", label: "Integrations", icon: PlugZap },
+  { id: "activity", label: "Activity", icon: Activity },
+];
+
+const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: string }> = {
+  command: {
+    eyebrow: "Local control plane",
+    title: "Growth command",
+    description: "Live status for your AI content and human approval workflow.",
+  },
+  create: {
+    eyebrow: "AI content engine",
+    title: "Create a draft",
+    description: "Generate with your own provider. Nothing publishes without approval.",
+  },
+  queue: {
+    eyebrow: "Human in the loop",
+    title: "Approval queue",
+    description: "Review the exact content version before it can leave this machine.",
+  },
+  integrations: {
+    eyebrow: "Bring your own stack",
+    title: "Connections",
+    description: "Connect local or hosted AI and the Telegram approval channel.",
+  },
+  activity: {
+    eyebrow: "Local audit trail",
+    title: "Activity",
+    description: "A durable record of settings, approvals, and publishing actions.",
+  },
+};
+
+const channelLabels: Record<ContentChannel, string> = {
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  x: "X / Twitter",
+  telegram: "Telegram",
+  blog: "Blog",
+};
+
+const channels = Object.entries(channelLabels) as [ContentChannel, string][];
+
+const statusStyles: Record<PostStatus, string> = {
+  pending: "border-amber-500/25 bg-amber-500/8 text-amber-300",
+  approved: "border-sky-500/25 bg-sky-500/8 text-sky-300",
+  rejected: "border-zinc-700 bg-zinc-900 text-zinc-400",
+  publishing: "border-violet-500/25 bg-violet-500/8 text-violet-300",
+  published: "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+  failed: "border-red-500/25 bg-red-500/8 text-red-300",
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatCompactDate(value: string) {
+  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
+    Math.round((new Date(value).getTime() - Date.now()) / 60_000),
+    "minute",
+  );
+}
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = typeof payload.error === "string"
+      ? payload.error
+      : typeof payload.message === "string"
+        ? payload.message
+        : `Request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-zinc-700 bg-white text-black shadow-[inset_0_0_0_1px_rgba(0,0,0,0.15)]">
+        <span className="text-[11px] font-black tracking-[-0.08em]">LG</span>
+        <span className="absolute right-0 bottom-0 size-1.5 bg-black" />
+      </div>
+      <div className="leading-none">
+        <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-100">LOCALGROWTH</p>
+        <p className="mt-1 text-[10px] font-medium tracking-[0.24em] text-zinc-600">CONTROL OS</p>
+      </div>
+    </div>
+  );
+}
+
+function RuntimeBadge({ state }: { state: PublicAppState | null }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+      <span className="relative flex size-1.5">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
+      </span>
+      LOCAL · {state ? `v${state.runtime.version}` : "CONNECTING"}
+    </div>
+  );
+}
+
+function SidebarContent({
+  active,
+  state,
+  onNavigate,
+}: {
+  active: ViewId;
+  state: PublicAppState | null;
+  onNavigate: (id: ViewId) => void;
+}) {
+  const pending = state?.posts.filter((post) => post.status === "pending").length ?? 0;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-[72px] items-center border-b border-zinc-900 px-5">
+        <Brand />
+      </div>
+      <nav aria-label="Primary" className="flex-1 space-y-1 px-3 py-5">
+        <p className="mb-3 px-2 text-[10px] font-semibold tracking-[0.18em] text-zinc-700 uppercase">
+          Workspace
+        </p>
+        {navigation.map((item) => {
+          const Icon = item.icon;
+          const selected = active === item.id;
+          return (
+            <button
+              aria-current={selected ? "page" : undefined}
+              className={cn(
+                "group flex h-10 w-full items-center gap-3 rounded-md border px-3 text-left text-[13px] font-medium transition-colors",
+                selected
+                  ? "border-zinc-700 bg-zinc-900 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                  : "border-transparent text-zinc-500 hover:bg-zinc-950 hover:text-zinc-200",
+              )}
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              type="button"
+            >
+              <Icon className={cn("size-4", selected ? "text-white" : "text-zinc-600 group-hover:text-zinc-300")} />
+              <span>{item.label}</span>
+              {item.id === "queue" && pending > 0 ? (
+                <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-black">
+                  {pending}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="border-t border-zinc-900 p-3">
+        <div className="rounded-md border border-zinc-900 bg-black p-3">
+          <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
+            <Database className="size-3.5 text-zinc-500" />
+            Durable local store
+          </div>
+          <p className="mt-1.5 text-[11px] leading-4 text-zinc-600">Secrets encrypted at rest. Data stays on this host.</p>
+        </div>
+        <div className="mt-3 flex items-center justify-between px-1">
+          <RuntimeBadge state={state} />
+          <Tooltip>
+            <TooltipTrigger
+              aria-label="Open integrations"
+              render={
+                <button
+                  className="grid size-8 place-items-center rounded-md text-zinc-600 hover:bg-zinc-900 hover:text-zinc-200"
+                  onClick={() => onNavigate("integrations")}
+                  type="button"
+                />
+              }
+            >
+              <Settings2 className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>Connections</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="space-y-6" aria-label="Loading workspace">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => (
+          <Skeleton className="h-32 rounded-lg bg-zinc-900" key={item} />
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <Skeleton className="h-96 rounded-lg bg-zinc-900" />
+        <Skeleton className="h-96 rounded-lg bg-zinc-900" />
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: PostStatus }) {
+  return (
+    <Badge className={cn("gap-1.5 border px-2 py-1 font-medium capitalize", statusStyles[status])} variant="outline">
+      <CircleDot className="size-3" />
+      {status}
+    </Badge>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  active,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  icon: LucideIcon;
+  active?: boolean;
+}) {
+  return (
+    <Card className={cn("min-h-32 justify-between", active && "border-zinc-600")}>
+      <CardHeader className="flex-row items-center justify-between">
+        <p className="text-xs font-medium text-zinc-500">{label}</p>
+        <div className="grid size-8 place-items-center rounded-md border border-zinc-800 bg-black text-zinc-500">
+          <Icon className="size-3.5" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-3xl font-semibold tracking-[-0.04em] text-zinc-50 tabular-nums">{value}</p>
+        <p className="mt-1.5 text-[11px] text-zinc-600">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="grid min-h-56 place-items-center px-6 py-10 text-center">
+      <div>
+        <div className="mx-auto grid size-10 place-items-center rounded-md border border-zinc-800 bg-zinc-950 text-zinc-500">
+          <Icon className="size-4" />
+        </div>
+        <h3 className="mt-4 text-sm font-medium text-zinc-200">{title}</h3>
+        <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-zinc-600">{description}</p>
+        {action ? <div className="mt-5">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <Label className="text-xs text-zinc-300" htmlFor={htmlFor}>{label}</Label>
+        {hint ? <span className="text-[10px] text-zinc-600">{hint}</span> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SetupRow({
+  complete,
+  label,
+  description,
+  onClick,
+}: {
+  complete: boolean;
+  label: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="group flex w-full items-center gap-3 border-t border-zinc-900 px-5 py-4 text-left first:border-t-0 hover:bg-zinc-950"
+      onClick={onClick}
+      type="button"
+    >
+      <span
+        className={cn(
+          "grid size-7 shrink-0 place-items-center rounded-full border",
+          complete ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-zinc-800 bg-black text-zinc-700",
+        )}
+      >
+        {complete ? <Check className="size-3.5" /> : <span className="size-1.5 rounded-full bg-current" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={cn("block text-xs font-medium", complete ? "text-zinc-300" : "text-zinc-100")}>{label}</span>
+        <span className="mt-1 block text-[11px] leading-4 text-zinc-600">{description}</span>
+      </span>
+      <ChevronRight className="size-4 text-zinc-700 transition-transform group-hover:translate-x-0.5 group-hover:text-zinc-400" />
+    </button>
+  );
+}
+
+function ConnectionStatus({ configured, verified }: { configured: boolean; verified: boolean }) {
+  if (verified) {
+    return <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline">Verified now</Badge>;
+  }
+  return (
+    <Badge className={cn(configured ? "border-zinc-700 text-zinc-300" : "border-zinc-800 text-zinc-600")} variant="outline">
+      {configured ? "Configured" : "Not configured"}
+    </Badge>
+  );
+}
+
+function IntegrationIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid size-10 place-items-center rounded-md border border-zinc-700 bg-black text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      {children}
+    </div>
+  );
+}
+
+export function GrowthConsole() {
+  const [activeView, setActiveView] = useState<ViewId>("command");
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [appState, setAppState] = useState<PublicAppState | null>(null);
+  const [initialError, setInitialError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
+  const [editPost, setEditPost] = useState<GeneratedPost | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", body: "", hashtags: "" });
+  const [providerVerified, setProviderVerified] = useState(false);
+  const [telegramVerified, setTelegramVerified] = useState(false);
+  const [providerModels, setProviderModels] = useState<string[]>([]);
+
+  const [workspaceForm, setWorkspaceForm] = useState({
+    name: "My workspace",
+    businessName: "",
+    description: "",
+    timezone: "Asia/Karachi",
+  });
+  const [providerForm, setProviderForm] = useState<{
+    kind: ProviderKind;
+    baseUrl: string;
+    model: string;
+    apiKey: string;
+  }>({ kind: "ollama", baseUrl: "http://127.0.0.1:11434", model: "", apiKey: "" });
+  const [telegramForm, setTelegramForm] = useState({ botToken: "", chatId: "" });
+  const [telegramPublicUrl, setTelegramPublicUrl] = useState("");
+  const [generateForm, setGenerateForm] = useState<{
+    topic: string;
+    channel: ContentChannel;
+    tone: string;
+    objective: string;
+    notifyTelegram: boolean;
+  }>({
+    topic: "",
+    channel: "linkedin",
+    tone: "Clear, useful and confident",
+    objective: "Build awareness and start relevant conversations",
+    notifyTelegram: true,
+  });
+
+  const loadState = useCallback(async () => {
+    setLoading(true);
+    setInitialError("");
+    try {
+      const next = await requestJson<PublicAppState>("/api/state", { cache: "no-store" });
+      setAppState(next);
+    } catch (error) {
+      setInitialError(error instanceof Error ? error.message : "Could not load the local workspace.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void requestJson<PublicAppState>("/api/state", { cache: "no-store" })
+      .then((next) => {
+        if (cancelled) return;
+        setAppState(next);
+        setWorkspaceForm(next.workspace);
+        setProviderForm({
+          kind: next.provider.kind,
+          baseUrl: next.provider.baseUrl,
+          model: next.provider.model,
+          apiKey: "",
+        });
+        setTelegramForm({ chatId: next.telegram.chatId, botToken: "" });
+        setTelegramPublicUrl(next.telegram.webhookUrl || "");
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setInitialError(error instanceof Error ? error.message : "Could not load the local workspace.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const counts = useMemo(() => {
+    const posts = appState?.posts ?? [];
+    return {
+      pending: posts.filter((post) => post.status === "pending").length,
+      approved: posts.filter((post) => post.status === "approved").length,
+      published: posts.filter((post) => post.status === "published").length,
+      attention: posts.filter((post) => post.status === "failed" || Boolean(post.lastError)).length,
+    };
+  }, [appState?.posts]);
+
+  const setup = useMemo(() => {
+    const business = Boolean(appState?.workspace.businessName && appState.workspace.description);
+    const provider = Boolean(appState?.provider.configured);
+    const telegram = Boolean(appState?.telegram.configured);
+    return { business, provider, telegram, complete: [business, provider, telegram].filter(Boolean).length };
+  }, [appState]);
+
+  const filteredPosts = useMemo(
+    () => (appState?.posts ?? []).filter((post) => queueFilter === "all" || post.status === queueFilter),
+    [appState?.posts, queueFilter],
+  );
+
+  function navigate(id: ViewId) {
+    setActiveView(id);
+    setMobileOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveWorkspace(event: FormEvent) {
+    event.preventDefault();
+    setBusy("workspace");
+    try {
+      const response = await requestJson<StateResponse>("/api/settings/workspace", {
+        method: "PUT",
+        body: JSON.stringify(workspaceForm),
+      });
+      setAppState(response.state);
+      toast.success("Business profile saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the workspace.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveProvider(event?: FormEvent) {
+    event?.preventDefault();
+    setBusy("provider-save");
+    try {
+      const response = await requestJson<StateResponse>("/api/settings/provider", {
+        method: "PUT",
+        body: JSON.stringify(providerForm),
+      });
+      setAppState(response.state);
+      setProviderForm((current) => ({ ...current, apiKey: "" }));
+      setProviderVerified(false);
+      toast.success("AI provider settings saved");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the provider.");
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testProviderConnection() {
+    const saved = await saveProvider();
+    if (!saved) return;
+    setBusy("provider-test");
+    try {
+      const result = await requestJson<ProviderConnectionResult>("/api/providers/test", { method: "POST" });
+      setProviderVerified(true);
+      setProviderModels(result.models ?? []);
+      toast.success(result.message, { description: result.latencyMs ? `${result.latencyMs} ms` : undefined });
+    } catch (error) {
+      setProviderVerified(false);
+      toast.error(error instanceof Error ? error.message : "Provider test failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveTelegram(event?: FormEvent) {
+    event?.preventDefault();
+    setBusy("telegram-save");
+    try {
+      const response = await requestJson<StateResponse>("/api/settings/telegram", {
+        method: "PUT",
+        body: JSON.stringify(telegramForm),
+      });
+      setAppState(response.state);
+      setTelegramForm((current) => ({ ...current, botToken: "" }));
+      setTelegramVerified(false);
+      toast.success("Telegram settings saved");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save Telegram.");
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testTelegramConnection() {
+    const saved = await saveTelegram();
+    if (!saved) return;
+    setBusy("telegram-test");
+    try {
+      const result = await requestJson<{ ok: boolean; message: string }>("/api/integrations/telegram/test", { method: "POST" });
+      setTelegramVerified(true);
+      toast.success(result.message);
+    } catch (error) {
+      setTelegramVerified(false);
+      toast.error(error instanceof Error ? error.message : "Telegram test failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generatePost(event: FormEvent) {
+    event.preventDefault();
+    setBusy("generate");
+    try {
+      const response = await requestJson<{
+        ok: boolean;
+        post: GeneratedPost;
+        notification: { ok: boolean; message: string } | null;
+        state: PublicAppState;
+      }>("/api/posts/generate", {
+        method: "POST",
+        body: JSON.stringify(generateForm),
+      });
+      setAppState(response.state);
+      setGenerateForm((current) => ({ ...current, topic: "" }));
+      toast.success("Draft generated", { description: `${channelLabels[response.post.channel]} · ${response.post.model}` });
+      if (response.notification?.ok === false) toast.warning("Draft saved, but Telegram notification failed", { description: response.notification.message });
+      if (response.notification?.ok) toast.success(response.notification.message);
+      setQueueFilter("pending");
+      navigate("queue");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Generation failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function decidePost(post: GeneratedPost, decision: "approve" | "reject") {
+    setBusy(`${decision}-${post.id}`);
+    try {
+      const response = await requestJson<StateResponse>(`/api/posts/${post.id}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ decision, revision: post.revision }),
+      });
+      setAppState(response.state);
+      toast.success(decision === "approve" ? "Draft approved and locked" : "Draft rejected");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Decision failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function publishPost(post: GeneratedPost) {
+    setBusy(`publish-${post.id}`);
+    try {
+      const response = await requestJson<StateResponse>(`/api/posts/${post.id}/publish`, {
+        method: "POST",
+        body: JSON.stringify({ revision: post.revision }),
+      });
+      setAppState(response.state);
+      toast.success("Published to Telegram");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Publish failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openEdit(post: GeneratedPost) {
+    setEditPost(post);
+    setEditForm({ title: post.title, body: post.body, hashtags: post.hashtags.join(" ") });
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!editPost) return;
+    setBusy(`edit-${editPost.id}`);
+    try {
+      const hashtags = editForm.hashtags
+        .split(/[\s,]+/)
+        .map((tag) => tag.trim().replace(/^#/, ""))
+        .filter(Boolean);
+      const response = await requestJson<StateResponse>(`/api/posts/${editPost.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: editForm.title, body: editForm.body, hashtags }),
+      });
+      setAppState(response.state);
+      setEditPost(null);
+      toast.success("Draft updated", { description: "Approval was reset for this new version." });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update the draft.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function registerTelegramWebhook() {
+    setBusy("telegram-webhook");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>("/api/integrations/telegram/webhook", {
+        method: "POST",
+        body: JSON.stringify({ publicUrl: telegramPublicUrl }),
+      });
+      setAppState(response.state);
+      setTelegramPublicUrl(response.state.telegram.webhookUrl);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Webhook registration failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const meta = pageMeta[activeView];
+
+  return (
+    <div className="min-h-screen bg-black text-zinc-100">
+      <div aria-hidden className="control-grid pointer-events-none fixed inset-x-0 top-0 h-[520px] opacity-80" />
+
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-zinc-900 bg-[#050505] lg:block">
+        <SidebarContent active={activeView} onNavigate={navigate} state={appState} />
+      </aside>
+
+      <Sheet onOpenChange={setMobileOpen} open={mobileOpen}>
+        <SheetContent className="w-[286px] border-zinc-800 bg-[#050505] p-0" side="left">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation</SheetTitle>
+            <SheetDescription>LocalGrowth workspace navigation</SheetDescription>
+          </SheetHeader>
+          <SidebarContent active={activeView} onNavigate={navigate} state={appState} />
+        </SheetContent>
+      </Sheet>
+
+      <div className="relative lg:pl-60">
+        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-zinc-900 bg-black/90 px-4 backdrop-blur-xl sm:px-6 lg:h-[72px] lg:px-8">
+          <Button aria-label="Open navigation" className="mr-3 lg:hidden" onClick={() => setMobileOpen(true)} size="icon" variant="ghost">
+            <Menu className="size-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-[10px] font-semibold tracking-[0.18em] text-zinc-600 uppercase">{meta.eyebrow}</p>
+              <span className="hidden text-zinc-800 sm:inline">/</span>
+              <p className="hidden truncate text-[10px] text-zinc-700 sm:block">{appState?.workspace.name || "Local workspace"}</p>
+            </div>
+            <h1 className="mt-1 truncate text-sm font-semibold text-zinc-100 sm:text-base">{meta.title}</h1>
+          </div>
+          <div className="ml-3 flex items-center gap-2">
+            <Button className="hidden sm:inline-flex" onClick={() => navigate("create")}>
+              <Plus /> New content
+            </Button>
+            <Button aria-label="Create content" className="sm:hidden" onClick={() => navigate("create")} size="icon">
+              <Plus />
+            </Button>
+          </div>
+        </header>
+
+        <main className="relative mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mb-6 hidden sm:block">
+            <p className="max-w-2xl text-sm leading-6 text-zinc-500">{meta.description}</p>
+          </div>
+
+          {loading ? <PageSkeleton /> : null}
+
+          {!loading && initialError ? (
+            <Card className="mx-auto mt-20 max-w-lg">
+              <EmptyState
+                action={<Button onClick={() => void loadState()} variant="outline"><RefreshCw /> Retry</Button>}
+                description={initialError}
+                icon={AlertTriangle}
+                title="Local API is not responding"
+              />
+            </Card>
+          ) : null}
+
+          {!loading && appState && activeView === "command" ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard active={counts.pending > 0} detail="Needs a human decision" icon={Clock3} label="Awaiting approval" value={counts.pending} />
+                <MetricCard detail="Locked and ready" icon={ShieldCheck} label="Approved" value={counts.approved} />
+                <MetricCard detail="Confirmed remote posts" icon={Rocket} label="Published" value={counts.published} />
+                <MetricCard active={counts.attention > 0} detail="Errors requiring action" icon={AlertTriangle} label="Needs attention" value={counts.attention} />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+                <Card>
+                  <CardHeader className="border-b border-zinc-900">
+                    <CardTitle>Recent content</CardTitle>
+                    <CardDescription>Real drafts generated in this workspace.</CardDescription>
+                    <CardAction>
+                      <Button onClick={() => navigate("queue")} size="sm" variant="ghost">View queue <ArrowRight /></Button>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {appState.posts.length === 0 ? (
+                      <EmptyState
+                        action={<Button disabled={!appState.provider.configured} onClick={() => navigate(appState.provider.configured ? "create" : "integrations")} variant="outline"><Sparkles /> {appState.provider.configured ? "Create first draft" : "Connect AI first"}</Button>}
+                        description="Generated content will appear here with its approval and publishing state."
+                        icon={FilePenLine}
+                        title="No content yet"
+                      />
+                    ) : (
+                      <div className="divide-y divide-zinc-900">
+                        {appState.posts.slice(0, 6).map((post) => (
+                          <button className="group flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-zinc-950" key={post.id} onClick={() => { setQueueFilter(post.status); navigate("queue"); }} type="button">
+                            <div className="grid size-9 shrink-0 place-items-center rounded-md border border-zinc-800 bg-black text-zinc-500">
+                              <FilePenLine className="size-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="truncate text-xs font-medium text-zinc-200">{post.title}</p>
+                                <span className="hidden text-[10px] text-zinc-700 sm:inline">{channelLabels[post.channel]}</span>
+                              </div>
+                              <p className="mt-1 truncate text-[11px] text-zinc-600">{post.model} · {formatCompactDate(post.updatedAt)}</p>
+                            </div>
+                            <StatusBadge status={post.status} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="border-b border-zinc-900">
+                    <CardTitle>System readiness</CardTitle>
+                    <CardDescription>{setup.complete}/3 modules configured</CardDescription>
+                    <CardAction><span className="font-mono text-xs text-zinc-500">{Math.round((setup.complete / 3) * 100)}%</span></CardAction>
+                    <Progress className="col-span-full mt-3" value={(setup.complete / 3) * 100} />
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <SetupRow complete={setup.business} description="Used as factual context for generation." label="Business profile" onClick={() => navigate("integrations")} />
+                    <SetupRow complete={setup.provider} description="Ollama or any OpenAI-compatible API." label="AI provider" onClick={() => navigate("integrations")} />
+                    <SetupRow complete={setup.telegram} description="Approval notifications and publishing." label="Telegram" onClick={() => navigate("integrations")} />
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader className="border-b border-zinc-900">
+                  <CardTitle>Latest activity</CardTitle>
+                  <CardDescription>Written to the local audit log.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {appState.audit.length === 0 ? (
+                    <EmptyState description="Configuration and workflow actions will be recorded here." icon={Activity} title="No recorded activity" />
+                  ) : (
+                    <div className="divide-y divide-zinc-900">
+                      {appState.audit.slice(0, 5).map((event) => (
+                        <div className="flex gap-3 px-5 py-3.5" key={event.id}>
+                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-zinc-600" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-zinc-300">{event.summary}</p>
+                            <p className="mt-1 font-mono text-[10px] text-zinc-700">{event.action}</p>
+                          </div>
+                          <time className="shrink-0 text-[10px] text-zinc-600" dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {!loading && appState && activeView === "create" ? (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <Card>
+                <CardHeader className="border-b border-zinc-900">
+                  <div className="flex items-center gap-3">
+                    <IntegrationIcon><Sparkles className="size-4" /></IntegrationIcon>
+                    <div>
+                      <CardTitle>Generation brief</CardTitle>
+                      <CardDescription>One useful brief becomes one reviewable draft.</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <form className="space-y-5" onSubmit={generatePost}>
+                    <Field htmlFor="topic" label="Topic or source brief" hint="Required">
+                      <Textarea
+                        id="topic"
+                        maxLength={1000}
+                        onChange={(event) => setGenerateForm((current) => ({ ...current, topic: event.target.value }))}
+                        placeholder="Example: Explain how our accounting service helps small retailers close monthly books faster. Do not invent statistics."
+                        required
+                        rows={7}
+                        value={generateForm.topic}
+                      />
+                    </Field>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field htmlFor="channel" label="Channel">
+                        <Select
+                          onValueChange={(value) => value && setGenerateForm((current) => ({ ...current, channel: value as ContentChannel }))}
+                          value={generateForm.channel}
+                        >
+                          <SelectTrigger className="h-10 w-full rounded-md border-input bg-[#080808]" id="channel">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border border-zinc-700 bg-[#0c0c0c]">
+                            {channels.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field htmlFor="tone" label="Tone">
+                        <Input id="tone" maxLength={160} onChange={(event) => setGenerateForm((current) => ({ ...current, tone: event.target.value }))} value={generateForm.tone} />
+                      </Field>
+                    </div>
+                    <Field htmlFor="objective" label="Objective">
+                      <Input id="objective" maxLength={500} onChange={(event) => setGenerateForm((current) => ({ ...current, objective: event.target.value }))} value={generateForm.objective} />
+                    </Field>
+                    <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
+                      <div>
+                        <Label className="text-xs text-zinc-200" htmlFor="notify-telegram">Send for Telegram approval</Label>
+                        <p className="mt-1 text-[11px] text-zinc-600">Draft is always saved even if notification fails.</p>
+                      </div>
+                      <Switch
+                        checked={generateForm.notifyTelegram}
+                        disabled={!appState.telegram.configured}
+                        id="notify-telegram"
+                        onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifyTelegram: checked }))}
+                      />
+                    </div>
+                    {!appState.provider.configured ? (
+                      <div className="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                        <span>Connect an AI provider and choose a model before generating.</span>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-end border-t border-zinc-900 pt-5">
+                      <Button disabled={!appState.provider.configured || !generateForm.topic.trim() || busy === "generate"} size="lg" type="submit">
+                        {busy === "generate" ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                        {busy === "generate" ? "Generating…" : "Generate review draft"}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Active engine</CardTitle>
+                    <CardDescription>Generation uses the saved connection.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-800 bg-black p-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Bot className="size-4 shrink-0 text-zinc-500" />
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium text-zinc-200">{appState.provider.configured ? appState.provider.model : "No model"}</p>
+                          <p className="mt-1 truncate font-mono text-[10px] text-zinc-600">{appState.provider.kind}</p>
+                        </div>
+                      </div>
+                      <span className={cn("size-2 rounded-full", appState.provider.configured ? "bg-emerald-400" : "bg-zinc-700")} />
+                    </div>
+                    <Button className="w-full" onClick={() => navigate("integrations")} variant="outline"><Settings2 /> Configure engine</Button>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Approval boundary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-xs leading-5 text-zinc-500">
+                    <div className="flex gap-3"><LockKeyhole className="mt-0.5 size-4 shrink-0 text-zinc-400" /><p>AI can create a pending draft, but the publish endpoint rejects unapproved versions.</p></div>
+                    <Separator className="bg-zinc-900" />
+                    <div className="flex gap-3"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-zinc-400" /><p>Editing an approved draft automatically invalidates that approval.</p></div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          ) : null}
+
+          {!loading && appState && activeView === "queue" ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-lg border border-zinc-900 bg-[#050505] p-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-1 overflow-x-auto">
+                  {(["all", "pending", "approved", "publishing", "published", "rejected"] as QueueFilter[]).map((filter) => {
+                    const total = filter === "all" ? appState.posts.length : appState.posts.filter((post) => post.status === filter).length;
+                    return (
+                      <button className={cn("flex h-8 items-center gap-2 whitespace-nowrap rounded-md px-3 text-xs font-medium transition-colors", queueFilter === filter ? "bg-zinc-800 text-white" : "text-zinc-600 hover:bg-zinc-900 hover:text-zinc-300")} key={filter} onClick={() => setQueueFilter(filter)} type="button">
+                        <span className="capitalize">{filter}</span><span className="font-mono text-[10px] text-zinc-500">{total}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button onClick={() => navigate("create")} size="sm"><Plus /> New draft</Button>
+              </div>
+
+              {filteredPosts.length === 0 ? (
+                <Card>
+                  <EmptyState
+                    action={<Button onClick={() => navigate("create")} variant="outline"><Plus /> Create content</Button>}
+                    description={appState.posts.length === 0 ? "Generate your first draft with a connected AI provider." : "No drafts match this status filter."}
+                    icon={Inbox}
+                    title={appState.posts.length === 0 ? "Queue is empty" : `No ${queueFilter} drafts`}
+                  />
+                </Card>
+              ) : (
+                <div className="grid gap-4 2xl:grid-cols-2">
+                  {filteredPosts.map((post) => (
+                    <Card className="min-w-0" key={post.id}>
+                      <CardHeader className="border-b border-zinc-900">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge className="border-zinc-800 bg-black text-zinc-400" variant="outline">{channelLabels[post.channel]}</Badge>
+                          <StatusBadge status={post.status} />
+                        </div>
+                        <CardAction>
+                          <p className="font-mono text-[10px] text-zinc-700">{post.id.slice(0, 8)}</p>
+                        </CardAction>
+                      </CardHeader>
+                      <CardContent className="flex flex-1 flex-col">
+                        <div className="flex-1">
+                          <h2 className="text-base font-semibold leading-6 text-zinc-100">{post.title}</h2>
+                          <p className="mt-3 max-w-[75ch] whitespace-pre-wrap text-sm leading-6 text-zinc-400">{post.body}</p>
+                          {post.hashtags.length > 0 ? (
+                            <div className="mt-4 flex flex-wrap gap-1.5">
+                              {post.hashtags.map((tag) => <span className="rounded bg-zinc-900 px-1.5 py-1 text-[11px] text-zinc-500" key={tag}>#{tag.replace(/^#/, "")}</span>)}
+                            </div>
+                          ) : null}
+                          {post.rationale ? (
+                            <details className="mt-4 rounded-md border border-zinc-900 bg-black px-3 py-2.5 text-xs text-zinc-500">
+                              <summary className="cursor-pointer font-medium text-zinc-400">AI rationale</summary>
+                              <p className="mt-2 leading-5">{post.rationale}</p>
+                            </details>
+                          ) : null}
+                          {post.lastError ? (
+                            <div className="mt-4 flex gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-300">
+                              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{post.lastError}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="mt-5 flex flex-col gap-3 border-t border-zinc-900 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-mono text-[10px] text-zinc-600">{post.model}</p>
+                            <time className="mt-1 block text-[10px] text-zinc-700" dateTime={post.updatedAt}>Updated {formatDate(post.updatedAt)}</time>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {!['publishing', 'published'].includes(post.status) ? <Button onClick={() => openEdit(post)} size="sm" variant="outline"><Pencil /> Edit</Button> : null}
+                            {post.status === "pending" ? (
+                              <>
+                                <Button disabled={busy === `reject-${post.id}`} onClick={() => void decidePost(post, "reject")} size="sm" variant="ghost">{busy === `reject-${post.id}` ? <Loader2 className="animate-spin" /> : <X />} Reject</Button>
+                                <Button disabled={busy === `approve-${post.id}`} onClick={() => void decidePost(post, "approve")} size="sm">{busy === `approve-${post.id}` ? <Loader2 className="animate-spin" /> : <Check />} Approve</Button>
+                              </>
+                            ) : null}
+                            {post.status === "approved" && post.channel === "telegram" ? (
+                              <Button disabled={busy === `publish-${post.id}`} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} Publish</Button>
+                            ) : null}
+                            {post.status === "approved" && post.channel !== "telegram" ? (
+                              <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
+                            ) : null}
+                            {post.status === "publishing" ? (
+                              <span className="inline-flex items-center gap-2 rounded-md border border-violet-500/20 px-2.5 py-1.5 text-[11px] text-violet-300"><Loader2 className="size-3 animate-spin" /> Sending safely</span>
+                            ) : null}
+                            {post.status === "published" && post.remoteId ? (
+                              <span className="font-mono text-[10px] text-emerald-400">remote:{post.remoteId}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {!loading && appState && activeView === "integrations" ? (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="border-b border-zinc-900">
+                  <div className="flex items-center gap-3">
+                    <IntegrationIcon><TerminalSquare className="size-4" /></IntegrationIcon>
+                    <div><CardTitle>Business context</CardTitle><CardDescription>Grounds the model in your real company information.</CardDescription></div>
+                  </div>
+                  <CardAction><ConnectionStatus configured={setup.business} verified={setup.business} /></CardAction>
+                </CardHeader>
+                <CardContent>
+                  <form className="grid gap-4 lg:grid-cols-2" onSubmit={saveWorkspace}>
+                    <Field htmlFor="workspace-name" label="Workspace name"><Input id="workspace-name" maxLength={80} onChange={(event) => setWorkspaceForm((current) => ({ ...current, name: event.target.value }))} required value={workspaceForm.name} /></Field>
+                    <Field htmlFor="business-name" label="Business name"><Input id="business-name" maxLength={120} onChange={(event) => setWorkspaceForm((current) => ({ ...current, businessName: event.target.value }))} placeholder="Acme Services" required value={workspaceForm.businessName} /></Field>
+                    <div className="lg:col-span-2"><Field htmlFor="business-description" label="What the business does" hint="Facts only"><Textarea id="business-description" maxLength={2000} onChange={(event) => setWorkspaceForm((current) => ({ ...current, description: event.target.value }))} placeholder="Products, audience, location, differentiators and claims the AI may safely use." required rows={4} value={workspaceForm.description} /></Field></div>
+                    <Field htmlFor="timezone" label="Timezone"><Input id="timezone" maxLength={80} onChange={(event) => setWorkspaceForm((current) => ({ ...current, timezone: event.target.value }))} value={workspaceForm.timezone} /></Field>
+                    <div className="flex items-end justify-end"><Button disabled={busy === "workspace"} type="submit">{busy === "workspace" ? <Loader2 className="animate-spin" /> : <Check />} Save profile</Button></div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Card>
+                  <CardHeader className="border-b border-zinc-900">
+                    <div className="flex items-center gap-3">
+                      <IntegrationIcon><Bot className="size-4" /></IntegrationIcon>
+                      <div><CardTitle>AI provider</CardTitle><CardDescription>Local Ollama or hosted OpenAI-compatible API.</CardDescription></div>
+                    </div>
+                    <CardAction><ConnectionStatus configured={appState.provider.configured} verified={providerVerified} /></CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    <form className="space-y-4" onSubmit={(event) => void saveProvider(event)}>
+                      <Field htmlFor="provider-kind" label="Adapter">
+                        <Select
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            setProviderForm((current) => ({
+                              ...current,
+                              kind: value as ProviderKind,
+                              baseUrl: value === "ollama" && current.baseUrl.includes("/v1") ? "http://127.0.0.1:11434" : current.baseUrl,
+                            }));
+                          }}
+                          value={providerForm.kind}
+                        >
+                          <SelectTrigger className="h-10 w-full rounded-md border-input bg-[#080808]" id="provider-kind"><SelectValue /></SelectTrigger>
+                          <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="ollama">Ollama (local)</SelectItem><SelectItem value="openai-compatible">OpenAI-compatible</SelectItem></SelectContent>
+                        </Select>
+                      </Field>
+                      <Field htmlFor="provider-url" label="Base URL" hint={providerForm.kind === "ollama" ? "Usually :11434" : "API root or /v1"}><Input id="provider-url" onChange={(event) => setProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder={providerForm.kind === "ollama" ? "http://127.0.0.1:11434" : "https://api.example.com/v1"} required type="url" value={providerForm.baseUrl} /></Field>
+                      <Field htmlFor="provider-model" label="Model" hint="Exact provider model ID"><Input id="provider-model" list="provider-models" maxLength={180} onChange={(event) => setProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={providerForm.kind === "ollama" ? "llama3.2:3b" : "model-name"} required value={providerForm.model} /><datalist id="provider-models">{providerModels.map((model) => <option key={model} value={model} />)}</datalist></Field>
+                      <Field htmlFor="provider-key" label="API key" hint={appState.provider.hasApiKey ? "Stored — blank keeps current key" : providerForm.kind === "ollama" ? "Optional" : "Required by most providers"}><Input autoComplete="off" id="provider-key" onChange={(event) => setProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={appState.provider.hasApiKey ? "••••••••••••" : "sk-…"} type="password" value={providerForm.apiKey} /></Field>
+                      <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-900 pt-4">
+                        <Button disabled={busy === "provider-save"} type="submit" variant="outline">{busy === "provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
+                        <Button disabled={busy === "provider-test" || busy === "provider-save"} onClick={() => void testProviderConnection()} type="button">{busy === "provider-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="border-b border-zinc-900">
+                    <div className="flex items-center gap-3">
+                      <IntegrationIcon><MessageCircle className="size-4" /></IntegrationIcon>
+                      <div><CardTitle>Telegram</CardTitle><CardDescription>Approval notifications and real publishing.</CardDescription></div>
+                    </div>
+                    <CardAction><ConnectionStatus configured={appState.telegram.configured} verified={telegramVerified} /></CardAction>
+                  </CardHeader>
+                  <CardContent>
+                    <form className="space-y-4" onSubmit={(event) => void saveTelegram(event)}>
+                      <Field htmlFor="bot-token" label="Bot token" hint={appState.telegram.hasBotToken ? "Stored — blank keeps current token" : "From @BotFather"}><Input autoComplete="off" id="bot-token" onChange={(event) => setTelegramForm((current) => ({ ...current, botToken: event.target.value }))} placeholder={appState.telegram.hasBotToken ? "••••••••••••" : "123456:ABC…"} type="password" value={telegramForm.botToken} /></Field>
+                      <Field htmlFor="chat-id" label="Approval chat ID" hint="User, group, or channel"><Input id="chat-id" maxLength={160} onChange={(event) => setTelegramForm((current) => ({ ...current, chatId: event.target.value }))} placeholder="-1001234567890" required value={telegramForm.chatId} /></Field>
+                      <div className="space-y-3 rounded-md border border-zinc-800 bg-black p-3">
+                        <div className="flex items-start gap-3">
+                          <Webhook className="mt-0.5 size-4 shrink-0 text-zinc-500" />
+                          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-medium text-zinc-300">Inline button approvals</p>{appState.telegram.webhookConfigured ? <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline">Connected</Badge> : null}</div><p className="mt-1 text-[11px] leading-4 text-zinc-600">Telegram needs a public HTTPS address. In-app approvals still work on localhost.</p></div>
+                        </div>
+                        <Field htmlFor="telegram-public-url" label="Public app URL" hint="HTTPS tunnel or domain"><Input id="telegram-public-url" onChange={(event) => setTelegramPublicUrl(event.target.value)} placeholder="https://growth.example.com" type="url" value={telegramPublicUrl} /></Field>
+                        <Button className="w-full" disabled={!appState.telegram.configured || !telegramPublicUrl || busy === "telegram-webhook"} onClick={() => void registerTelegramWebhook()} type="button" variant="outline">{busy === "telegram-webhook" ? <Loader2 className="animate-spin" /> : <Webhook />} {appState.telegram.webhookConfigured ? "Update secure webhook" : "Connect approval buttons"}</Button>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-900 pt-4">
+                        <Button disabled={busy === "telegram-save"} type="submit" variant="outline">{busy === "telegram-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
+                        <Button disabled={busy === "telegram-test" || busy === "telegram-save"} onClick={() => void testTelegramConnection()} type="button">{busy === "telegram-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          ) : null}
+
+          {!loading && appState && activeView === "activity" ? (
+            <Card>
+              <CardHeader className="border-b border-zinc-900">
+                <CardTitle>Audit log</CardTitle>
+                <CardDescription>{appState.audit.length} durable event{appState.audit.length === 1 ? "" : "s"} on this host.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                {appState.audit.length === 0 ? (
+                  <EmptyState description="Save a connection or generate content to create the first event." icon={Activity} title="Audit log is empty" />
+                ) : (
+                  <div className="divide-y divide-zinc-900">
+                    {appState.audit.map((event) => (
+                      <div className="grid gap-3 px-5 py-4 sm:grid-cols-[32px_minmax(0,1fr)_auto] sm:items-center" key={event.id}>
+                        <div className="grid size-8 place-items-center rounded-md border border-zinc-800 bg-black text-zinc-600"><Activity className="size-3.5" /></div>
+                        <div className="min-w-0"><p className="text-xs text-zinc-300">{event.summary}</p><p className="mt-1 font-mono text-[10px] text-zinc-700">{event.action} · {event.entityType}:{event.entityId.slice(0, 12)}</p></div>
+                        <time className="text-[10px] text-zinc-600" dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+        </main>
+      </div>
+
+      <Dialog onOpenChange={(open) => !open && setEditPost(null)} open={Boolean(editPost)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit draft</DialogTitle>
+            <DialogDescription>Saving creates a new content version and resets any previous approval.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" id="edit-draft-form" onSubmit={saveEdit}>
+            <Field htmlFor="edit-title" label="Title"><Input id="edit-title" maxLength={160} onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))} required value={editForm.title} /></Field>
+            <Field htmlFor="edit-body" label="Post body"><Textarea id="edit-body" maxLength={12000} onChange={(event) => setEditForm((current) => ({ ...current, body: event.target.value }))} required rows={10} value={editForm.body} /></Field>
+            <Field htmlFor="edit-tags" label="Hashtags" hint="Separate with spaces or commas"><Input id="edit-tags" onChange={(event) => setEditForm((current) => ({ ...current, hashtags: event.target.value }))} value={editForm.hashtags} /></Field>
+            <div className="flex gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-200"><AlertTriangle className="mt-0.5 size-4 shrink-0" />Editing invalidates approval. The updated draft returns to Pending.</div>
+          </form>
+          <DialogFooter className="border-zinc-800 bg-[#090909]">
+            <Button onClick={() => setEditPost(null)} type="button" variant="ghost">Cancel</Button>
+            <Button disabled={Boolean(editPost && busy === `edit-${editPost.id}`)} form="edit-draft-form" type="submit">{editPost && busy === `edit-${editPost.id}` ? <Loader2 className="animate-spin" /> : <Check />} Save new version</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
