@@ -49,6 +49,7 @@ def read_session() -> Iterator[Session]:
     finally:
         session.close()
 
+
 @contextmanager
 def write_session() -> Iterator[Session]:
     session = SessionLocal()

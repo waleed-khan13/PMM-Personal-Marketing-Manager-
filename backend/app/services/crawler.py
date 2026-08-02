@@ -15,9 +15,7 @@ import httpx
 from app.errors import AppError, ExternalServiceError
 
 USER_AGENT_TOKEN = "LocalGrowthOS"
-USER_AGENT = (
-    "LocalGrowthOS/0.7 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
-)
+USER_AGENT = "LocalGrowthOS/0.8 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
 MAX_PAGE_BYTES = 1_000_000
 MAX_PAGES = 4
 CRAWL_LOCK = asyncio.Lock()
@@ -217,7 +215,9 @@ async def _read_response(
                         raise ExternalServiceError("Website returned an invalid redirect.")
                     target = urljoin(current, location)
                     if not _same_site(url, target):
-                        raise ExternalServiceError("Website redirected to a different domain; crawl stopped safely.")
+                        raise ExternalServiceError(
+                            "Website redirected to a different domain; crawl stopped safely."
+                        )
                     current = target
                     continue
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].casefold()

@@ -27,7 +27,9 @@ async def telegram_request(
     try:
         payload = response.json()
     except ValueError as error:
-        raise ExternalServiceError(f"Telegram returned a non-JSON response ({response.status_code}).") from error
+        raise ExternalServiceError(
+            f"Telegram returned a non-JSON response ({response.status_code})."
+        ) from error
     if not response.is_success or not isinstance(payload, dict) or not payload.get("ok"):
         description = str(payload.get("description") or "") if isinstance(payload, dict) else ""
         raise ExternalServiceError(description or f"Telegram returned HTTP {response.status_code}.")
@@ -40,7 +42,9 @@ async def test_connection(token: str) -> dict[str, Any]:
         raise ExternalServiceError("Telegram returned an invalid bot profile.")
     return {
         "id": bot.get("id"),
-        "name": f"@{bot['username']}" if bot.get("username") else str(bot.get("first_name") or "Telegram bot"),
+        "name": f"@{bot['username']}"
+        if bot.get("username")
+        else str(bot.get("first_name") or "Telegram bot"),
     }
 
 

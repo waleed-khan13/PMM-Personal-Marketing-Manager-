@@ -31,7 +31,9 @@ def get_settings() -> Settings:
     backend_root = Path(__file__).resolve().parents[1]
     project_root = backend_root.parent
     configured_data_dir = os.getenv("LOCALGROWTH_DATA_DIR", "").strip()
-    data_dir = Path(configured_data_dir).expanduser().resolve() if configured_data_dir else project_root / "data"
+    data_dir = (
+        Path(configured_data_dir).expanduser().resolve() if configured_data_dir else project_root / "data"
+    )
     host = os.getenv("LOCALGROWTH_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = int(os.getenv("LOCALGROWTH_API_PORT", "8000"))
     poll_timeout = max(5, min(int(os.getenv("LOCALGROWTH_TELEGRAM_POLL_TIMEOUT", "25")), 50))

@@ -79,6 +79,8 @@ The static website crawler resolves every request and redirect target before con
 
 The singleton `icp_profiles` row contains versioned business-fit criteria, never model prompts or sensitive-trait rules. Saving a profile applies a deterministic 0–100 function to every lead in one local transaction. Each score stores its profile version, timestamp, and structured reason codes with signed point changes. New and merged imports use the current profile immediately. The high-intent view uses the effective score, while a manual correction is stored separately with a required reason so the original rule score and explanation remain available. Profile changes refresh the rule score but do not silently discard a human correction.
 
+Outreach eligibility is a separate deterministic gate on the lead row: suppression must be clear, an email must exist, the legal basis and consent state must be compatible, the purpose/evidence note must be present, and the retention review date must be current. The `outreach_drafts` table stores provider provenance, editable subject/body copy, revision, decision state, and approval/export timestamps. Generation rechecks eligibility before and after the provider call. Every edit increments the revision and clears approval. CSV export requires that same approved revision and rechecks eligibility; there is no outreach delivery operation in the core. Per-lead JSON export supports portability, while typed permanent deletion removes the lead, identities, and drafts through SQLite foreign-key cascades and leaves a non-personal audit event.
+
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.

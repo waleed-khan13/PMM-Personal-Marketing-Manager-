@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -155,6 +155,37 @@ class LeadScoreOverrideUpdate(ApiModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class LeadComplianceUpdate(ApiModel):
+    consent_status: Literal["unknown", "granted", "not_applicable", "denied", "withdrawn"]
+    legal_basis: Literal["consent", "legitimate_interest", "existing_customer", "contract", "other"]
+    legal_basis_note: str = Field(min_length=5, max_length=2_000)
+    retention_until: date
+
+
+class OutreachGenerateRequest(ApiModel):
+    objective: str = Field(min_length=3, max_length=500)
+    tone: str = Field(default="Clear, relevant, and respectful", min_length=2, max_length=160)
+
+
+class OutreachDraftUpdate(ApiModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=12_000)
+
+
+class OutreachDecisionRequest(ApiModel):
+    decision: Literal["approve", "reject"]
+    revision: int = Field(ge=1)
+
+
+class OutreachExportRequest(ApiModel):
+    revision: int = Field(ge=1)
+
+
+class LeadDeleteRequest(ApiModel):
+    reason: str = Field(min_length=5, max_length=500)
+    confirmation: Literal["DELETE"]
+
+
 class ConnectorAccountUpsert(ApiModel):
     adapter_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,79}$")
     name: str = Field(min_length=1, max_length=120)
@@ -197,6 +228,12 @@ class GeneratedContent(ApiModel):
     title: str
     body: str
     hashtags: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class GeneratedOutreach(ApiModel):
+    subject: str
+    body: str
     rationale: str = ""
 
 

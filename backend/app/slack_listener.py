@@ -74,11 +74,7 @@ def process_slack_interaction(
         decide_post(post_id, revision, approved, source="slack")
     except AppError as error:
         return SlackInteractionResult(channel_id, user_id, error.message)
-    message = (
-        f"Revision {revision} approved and locked."
-        if approved
-        else f"Revision {revision} rejected."
-    )
+    message = f"Revision {revision} approved and locked." if approved else f"Revision {revision} rejected."
     return SlackInteractionResult(channel_id, user_id, message)
 
 

@@ -146,6 +146,11 @@ class Lead(Base):
     manual_score: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     manual_score_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     manual_score_updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    consent_status: Mapped[str] = mapped_column(String(40), nullable=False, default="unknown", index=True)
+    legal_basis: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    legal_basis_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    retention_until: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    compliance_reviewed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
 
@@ -174,3 +179,26 @@ class IcpProfile(Base):
     require_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class OutreachDraft(Base):
+    __tablename__ = "outreach_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lead_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False, default="email")
+    objective: Mapped[str] = mapped_column(String(500), nullable=False)
+    tone: Mapped[str] = mapped_column(String(160), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft", index=True)
+    provider_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(180), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    approved_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    exported_at: Mapped[str | None] = mapped_column(String(40), nullable=True)

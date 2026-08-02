@@ -33,7 +33,9 @@ def validate_wordpress_site_url(value: str) -> str:
     except ValueError:
         pass
     if parsed.scheme != "https" and not is_loopback:
-        raise ExternalServiceError("Use HTTPS for a remote WordPress site. HTTP is allowed only on localhost.")
+        raise ExternalServiceError(
+            "Use HTTPS for a remote WordPress site. HTTP is allowed only on localhost."
+        )
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 

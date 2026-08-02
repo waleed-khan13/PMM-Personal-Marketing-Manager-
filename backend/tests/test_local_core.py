@@ -244,7 +244,7 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
                 {"url": "https://acme.example/contact", "title": "Contact"},
             ],
             "robotsRespected": True,
-            "userAgent": "LocalGrowthOS/0.7",
+            "userAgent": "LocalGrowthOS/0.8",
         }
 
     monkeypatch.setattr("app.main.crawl_website", fake_crawl)
@@ -320,9 +320,7 @@ def test_deterministic_icp_scoring_high_intent_filter_and_manual_correction(clie
         "direct_contact",
     }
     assert university["icpScore"] == 65
-    assert "excluded_keyword_match" in {
-        reason["code"] for reason in university["icpReasons"]
-    }
+    assert "excluded_keyword_match" in {reason["code"] for reason in university["icpReasons"]}
 
     high_intent = client.get("/api/leads?status=high-intent&query=Northstar").json()
     assert [item["id"] for item in high_intent["items"]] == [practice["id"]]
@@ -357,6 +355,165 @@ def test_deterministic_icp_scoring_high_intent_filter_and_manual_correction(clie
     assert cleared.status_code == 200
     assert cleared.json()["lead"]["manualScore"] is None
     assert cleared.json()["lead"]["effectiveScore"] == 65
+
+
+def test_reviewed_outreach_export_and_explicit_retention_delete(client, monkeypatch) -> None:
+    from app.schemas import GeneratedOutreach
+
+    provider = client.put(
+        "/api/settings/provider",
+        json={
+            "kind": "openai-compatible",
+            "baseUrl": "https://provider.example/v1",
+            "model": "outreach-test-model",
+            "apiKey": "",
+        },
+    )
+    assert provider.status_code == 200
+
+    imported = client.post(
+        "/api/leads/import",
+        json={
+            "source": "manual",
+            "rows": [
+                {
+                    "businessName": "Reviewed Outreach Pilot",
+                    "website": "https://reviewed-outreach.example",
+                    "email": "owner@reviewed-outreach.example",
+                    "location": "Karachi, Pakistan",
+                    "notes": "Publicly listed independent design studio.",
+                }
+            ],
+        },
+    )
+    assert imported.status_code == 200
+    lead = client.get("/api/leads?query=Reviewed%20Outreach%20Pilot").json()["items"][0]
+    assert lead["outreachReady"] is False
+    assert "Record a legal basis." in lead["outreachBlockers"]
+
+    incompatible = client.put(
+        f"/api/leads/{lead['id']}/compliance",
+        json={
+            "consentStatus": "not_applicable",
+            "legalBasis": "consent",
+            "legalBasisNote": "The owner asked to receive a proposal.",
+            "retentionUntil": "2030-12-31",
+        },
+    )
+    assert incompatible.status_code == 400
+
+    withdrawn = client.put(
+        f"/api/leads/{lead['id']}/compliance",
+        json={
+            "consentStatus": "withdrawn",
+            "legalBasis": "consent",
+            "legalBasisNote": "The contact withdrew permission; outreach must remain blocked.",
+            "retentionUntil": "2030-12-31",
+        },
+    )
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["lead"]["outreachReady"] is False
+    assert "Consent was withdrawn." in withdrawn.json()["lead"]["outreachBlockers"]
+
+    reviewed = client.put(
+        f"/api/leads/{lead['id']}/compliance",
+        json={
+            "consentStatus": "granted",
+            "legalBasis": "consent",
+            "legalBasisNote": "The owner asked to receive a one-time proposal by email.",
+            "retentionUntil": "2030-12-31",
+        },
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["lead"]["outreachReady"] is True
+    ready_ids = {item["id"] for item in client.get("/api/leads?status=outreach-ready").json()["items"]}
+    assert lead["id"] in ready_ids
+
+    async def fake_generate_outreach(*_args, **_kwargs):
+        return GeneratedOutreach(
+            subject="A local collaboration idea",
+            body="Hello,\n\nHere is a concise proposal for your review.\n\nRegards,\nExample Studio",
+            rationale="Uses the verified public business context without invented familiarity.",
+        )
+
+    monkeypatch.setattr("app.main.generate_outreach", fake_generate_outreach)
+    generated = client.post(
+        f"/api/leads/{lead['id']}/outreach-drafts",
+        json={
+            "objective": "Offer a one-time website performance review",
+            "tone": "Clear and respectful",
+        },
+    )
+    assert generated.status_code == 200
+    draft = generated.json()["draft"]
+    assert draft["revision"] == 1
+    assert draft["status"] == "draft"
+
+    unapproved_export = client.post(f"/api/outreach-drafts/{draft['id']}/export", json={"revision": 1})
+    assert unapproved_export.status_code == 400
+
+    edited = client.put(
+        f"/api/outreach-drafts/{draft['id']}",
+        json={
+            "subject": "A reviewed local collaboration idea",
+            "body": "Hello,\n\nThis edited proposal still needs approval.\n\nRegards,\nExample Studio",
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["draft"]["revision"] == 2
+
+    stale = client.post(
+        f"/api/outreach-drafts/{draft['id']}/decision",
+        json={"decision": "approve", "revision": 1},
+    )
+    assert stale.status_code == 400
+    approved = client.post(
+        f"/api/outreach-drafts/{draft['id']}/decision",
+        json={"decision": "approve", "revision": 2},
+    )
+    assert approved.status_code == 200
+
+    exported = client.post(f"/api/outreach-drafts/{draft['id']}/export", json={"revision": 2})
+    assert exported.status_code == 200
+    assert exported.json()["mimeType"].startswith("text/csv")
+    assert "owner@reviewed-outreach.example" in exported.json()["content"]
+    assert exported.json()["draft"]["status"] == "exported"
+
+    data_export = client.post(f"/api/leads/{lead['id']}/data-export")
+    assert data_export.status_code == 200
+    exported_data = json.loads(data_export.json()["content"])
+    assert exported_data["lead"]["id"] == lead["id"]
+    assert exported_data["outreachDrafts"][0]["revision"] == 2
+
+    expired = client.put(
+        f"/api/leads/{lead['id']}/compliance",
+        json={
+            "consentStatus": "granted",
+            "legalBasis": "consent",
+            "legalBasisNote": "Retention review date intentionally expired for operator review.",
+            "retentionUntil": "2020-01-01",
+        },
+    )
+    assert expired.status_code == 200
+    assert expired.json()["lead"]["retentionExpired"] is True
+    expired_ids = {item["id"] for item in client.get("/api/leads?status=retention-expired").json()["items"]}
+    assert lead["id"] in expired_ids
+
+    wrong_confirmation = client.request(
+        "DELETE",
+        f"/api/leads/{lead['id']}",
+        json={"reason": "Retention period ended.", "confirmation": "REMOVE"},
+    )
+    assert wrong_confirmation.status_code == 422
+    deleted = client.request(
+        "DELETE",
+        f"/api/leads/{lead['id']}",
+        json={"reason": "Retention period ended.", "confirmation": "DELETE"},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["deletedId"] == lead["id"]
+    assert client.get("/api/leads?query=Reviewed%20Outreach%20Pilot").json()["total"] == 0
+    assert any(event["action"] == "lead.data_deleted" for event in deleted.json()["state"]["audit"])
 
 
 def test_draft_version_approval_and_single_publish(client, monkeypatch) -> None:
@@ -789,10 +946,7 @@ def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch
     repeated = process_slack_interaction(interaction, "C9876543210")
     assert repeated is not None
     assert "Current status: approved" in repeated.message
-    assert any(
-        event["action"] == "post.approved.slack"
-        for event in client.get("/api/state").json()["audit"]
-    )
+    assert any(event["action"] == "post.approved.slack" for event in client.get("/api/state").json()["audit"])
 
     removed = client.delete(f"/api/connectors/{account_id}")
     assert removed.status_code == 200

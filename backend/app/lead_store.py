@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.errors import AppError
 from app.models import IcpProfile, Lead, LeadIdentity
 from app.schemas import (
     IcpProfileUpdate,
+    LeadComplianceUpdate,
     LeadImportRequest,
     LeadImportRow,
     LeadScoreOverrideUpdate,
@@ -77,6 +79,7 @@ def _identity_values(row: LeadImportRow) -> list[tuple[str, str]]:
 
 def _lead_dict(lead: Lead) -> dict[str, object]:
     effective_score = lead.manual_score if lead.manual_score is not None else lead.icp_score
+    outreach = outreach_state(lead)
     return {
         "id": lead.id,
         "businessName": lead.business_name,
@@ -101,8 +104,45 @@ def _lead_dict(lead: Lead) -> dict[str, object]:
         "manualScoreReason": lead.manual_score_reason,
         "manualScoreUpdatedAt": lead.manual_score_updated_at,
         "effectiveScore": effective_score,
+        "consentStatus": lead.consent_status,
+        "legalBasis": lead.legal_basis,
+        "legalBasisNote": lead.legal_basis_note,
+        "retentionUntil": lead.retention_until,
+        "complianceReviewedAt": lead.compliance_reviewed_at,
+        **outreach,
         "createdAt": lead.created_at,
         "updatedAt": lead.updated_at,
+    }
+
+
+def outreach_state(lead: Lead) -> dict[str, object]:
+    today = datetime.now(UTC).date().isoformat()
+    retention_expired = bool(lead.retention_until and lead.retention_until < today)
+    blockers: list[str] = []
+    if lead.suppressed:
+        blockers.append("Lead is on the suppression list.")
+    if not lead.email:
+        blockers.append("A deliverable email address is required.")
+    if not lead.legal_basis:
+        blockers.append("Record a legal basis.")
+    if not lead.legal_basis_note.strip():
+        blockers.append("Record the outreach purpose and supporting note.")
+    if not lead.retention_until:
+        blockers.append("Set a retention review date.")
+    elif retention_expired:
+        blockers.append("The retention review date has passed.")
+    if lead.legal_basis == "consent" and lead.consent_status != "granted":
+        blockers.append("Consent must be granted when consent is the legal basis.")
+    elif lead.legal_basis and lead.legal_basis != "consent" and lead.consent_status != "not_applicable":
+        blockers.append("Mark consent not applicable when another legal basis is used.")
+    if lead.consent_status == "denied":
+        blockers.append("Consent was denied.")
+    elif lead.consent_status == "withdrawn":
+        blockers.append("Consent was withdrawn.")
+    return {
+        "outreachReady": not blockers,
+        "outreachBlockers": blockers,
+        "retentionExpired": retention_expired,
     }
 
 
@@ -127,20 +167,14 @@ def _score_reason(code: str, label: str, points: int, detail: str) -> dict[str, 
 
 def _score_lead(lead: Lead, profile: IcpProfile, scored_at: str) -> None:
     searchable = _normalized_text(
-        " ".join(
-            value
-            for value in (lead.business_name, lead.website or "", lead.notes or "")
-            if value
-        )
+        " ".join(value for value in (lead.business_name, lead.website or "", lead.notes or "") if value)
     )
     location = _normalized_text(lead.location or "")
     reasons = [_score_reason("baseline", "Starting fit", 40, "Every lead starts at 40 points.")]
     score = 40
 
     if profile.target_keywords:
-        matches = [
-            term for term in profile.target_keywords if _normalized_text(term) in searchable
-        ]
+        matches = [term for term in profile.target_keywords if _normalized_text(term) in searchable]
         if matches:
             score += 20
             reasons.append(
@@ -163,9 +197,7 @@ def _score_lead(lead: Lead, profile: IcpProfile, scored_at: str) -> None:
             )
 
     if profile.target_locations:
-        location_matches = [
-            term for term in profile.target_locations if _normalized_text(term) in location
-        ]
+        location_matches = [term for term in profile.target_locations if _normalized_text(term) in location]
         if location_matches:
             score += 15
             reasons.append(
@@ -227,9 +259,7 @@ def _score_lead(lead: Lead, profile: IcpProfile, scored_at: str) -> None:
             )
         )
 
-    excluded_matches = [
-        term for term in profile.excluded_keywords if _normalized_text(term) in searchable
-    ]
+    excluded_matches = [term for term in profile.excluded_keywords if _normalized_text(term) in searchable]
     if excluded_matches:
         score -= 35
         reasons.append(
@@ -287,10 +317,7 @@ def save_icp_profile(payload: IcpProfileUpdate) -> dict[str, object]:
 
 
 def _find_existing_lead(session, identities: Iterable[tuple[str, str]]) -> Lead | None:  # type: ignore[no-untyped-def]
-    clauses = [
-        (LeadIdentity.kind == kind) & (LeadIdentity.value == value)
-        for kind, value in identities
-    ]
+    clauses = [(LeadIdentity.kind == kind) & (LeadIdentity.value == value) for kind, value in identities]
     if not clauses:
         return None
     identity = session.scalar(select(LeadIdentity).where(or_(*clauses)).order_by(LeadIdentity.id.asc()))
@@ -298,7 +325,9 @@ def _find_existing_lead(session, identities: Iterable[tuple[str, str]]) -> Lead 
 
 
 def _add_missing_identities(
-    session, lead: Lead, identities: Iterable[tuple[str, str]]  # type: ignore[no-untyped-def]
+    session,
+    lead: Lead,
+    identities: Iterable[tuple[str, str]],  # type: ignore[no-untyped-def]
 ) -> None:
     for kind, value in identities:
         existing = session.scalar(
@@ -383,6 +412,11 @@ def import_leads(payload: LeadImportRequest) -> dict[str, int]:
                     manual_score=None,
                     manual_score_reason=None,
                     manual_score_updated_at=None,
+                    consent_status="unknown",
+                    legal_basis=None,
+                    legal_basis_note="",
+                    retention_until=None,
+                    compliance_reviewed_at=None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -429,6 +463,27 @@ def list_leads(
         filters.append(Lead.suppressed.is_(False))
         if status == "high-intent":
             filters.append(func.coalesce(Lead.manual_score, Lead.icp_score) >= 70)
+        elif status == "outreach-ready":
+            filters.extend(
+                [
+                    Lead.email.is_not(None),
+                    Lead.legal_basis.is_not(None),
+                    Lead.legal_basis_note != "",
+                    Lead.retention_until.is_not(None),
+                    Lead.retention_until >= datetime.now(UTC).date().isoformat(),
+                    or_(
+                        (Lead.legal_basis == "consent") & (Lead.consent_status == "granted"),
+                        (Lead.legal_basis != "consent") & (Lead.consent_status == "not_applicable"),
+                    ),
+                ]
+            )
+        elif status == "retention-expired":
+            filters.extend(
+                [
+                    Lead.retention_until.is_not(None),
+                    Lead.retention_until < datetime.now(UTC).date().isoformat(),
+                ]
+            )
         elif status != "active":
             filters.append(Lead.status == status)
     if query.strip():
@@ -470,6 +525,9 @@ def lead_summary() -> dict[str, int]:
             )
             or 0
         )
+        leads = list(session.scalars(select(Lead)).all())
+        outreach_ready = sum(1 for lead in leads if outreach_state(lead)["outreachReady"])
+        retention_expired = sum(1 for lead in leads if outreach_state(lead)["retentionExpired"])
     summary = {
         "total": 0,
         "active": 0,
@@ -478,6 +536,8 @@ def lead_summary() -> dict[str, int]:
         "qualified": 0,
         "contacted": 0,
         "highIntent": high_intent,
+        "outreachReady": outreach_ready,
+        "retentionExpired": retention_expired,
     }
     for status, is_suppressed, count in rows:
         amount = int(count)
@@ -489,6 +549,44 @@ def lead_summary() -> dict[str, int]:
             if status in summary:
                 summary[status] += amount
     return summary
+
+
+def update_lead_compliance(lead_id: str, payload: LeadComplianceUpdate) -> dict[str, object]:
+    blocked_consent_states = {"denied", "withdrawn"}
+    if (
+        payload.consent_status not in blocked_consent_states
+        and payload.legal_basis == "consent"
+        and payload.consent_status != "granted"
+    ):
+        raise AppError("Consent must be granted when consent is the selected legal basis.")
+    if (
+        payload.consent_status not in blocked_consent_states
+        and payload.legal_basis != "consent"
+        and payload.consent_status != "not_applicable"
+    ):
+        raise AppError("Mark consent not applicable when using a non-consent legal basis.")
+    with write_session() as session:
+        lead = session.get(Lead, lead_id)
+        if lead is None:
+            raise AppError("Lead not found.", 404)
+        now = utc_now()
+        lead.consent_status = payload.consent_status
+        lead.legal_basis = payload.legal_basis
+        lead.legal_basis_note = payload.legal_basis_note
+        lead.retention_until = payload.retention_until.isoformat()
+        lead.compliance_reviewed_at = now
+        lead.updated_at = now
+        append_audit(
+            session,
+            action="lead.compliance_reviewed",
+            entity_type="lead",
+            entity_id=lead.id,
+            summary=(
+                f"Outreach basis reviewed as {payload.legal_basis}; retention review set for "
+                f"{payload.retention_until.isoformat()}."
+            ),
+        )
+        return _lead_dict(lead)
 
 
 def update_lead_status(lead_id: str, payload: LeadStatusUpdate) -> dict[str, object]:
@@ -549,9 +647,7 @@ def restore_lead(lead_id: str) -> dict[str, object]:
         return _lead_dict(lead)
 
 
-def update_lead_score_override(
-    lead_id: str, payload: LeadScoreOverrideUpdate
-) -> dict[str, object]:
+def update_lead_score_override(lead_id: str, payload: LeadScoreOverrideUpdate) -> dict[str, object]:
     with write_session() as session:
         lead = session.get(Lead, lead_id)
         if lead is None:

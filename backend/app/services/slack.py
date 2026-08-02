@@ -37,7 +37,11 @@ async def slack_request(
     except ValueError as error:
         raise ExternalServiceError("Slack returned an unreadable response.") from error
     if not response.is_success or not isinstance(payload, dict) or not payload.get("ok"):
-        reason = str(payload.get("error") or f"HTTP {response.status_code}") if isinstance(payload, dict) else "invalid response"
+        reason = (
+            str(payload.get("error") or f"HTTP {response.status_code}")
+            if isinstance(payload, dict)
+            else "invalid response"
+        )
         raise ExternalServiceError(f"Slack {method} failed: {reason[:200]}.")
     return payload
 
@@ -60,8 +64,7 @@ async def send_approval_message(
     hashtag_line = f"\n\n{' '.join(post['hashtags'])}" if post.get("hashtags") else ""
     preview = f"{post['body']}{hashtag_line}"[:2_600]
     fallback = (
-        f"Approval requested for {post['channel']} revision {post['revision']}: "
-        f"{post['title']}\n\n{preview}"
+        f"Approval requested for {post['channel']} revision {post['revision']}: {post['title']}\n\n{preview}"
     )[:4_000]
     payload = await slack_request(
         bot_token,

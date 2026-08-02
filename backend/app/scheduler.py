@@ -130,7 +130,9 @@ class LocalScheduler:
             complete_job(job_id)
             self._last_error = None
         except Exception as error:  # noqa: BLE001 - remote delivery failures may be ambiguous.
-            message = error.message if isinstance(error, AppError) else str(error) or "Scheduled publish failed."
+            message = (
+                error.message if isinstance(error, AppError) else str(error) or "Scheduled publish failed."
+            )
             fail_publish_uncertain(post_id, revision, message)
             fail_job(job_id, message, retryable=False)
             self._last_error = message

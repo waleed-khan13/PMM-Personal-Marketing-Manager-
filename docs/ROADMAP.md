@@ -47,7 +47,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] Robots-aware public website crawler and contact-page extraction with SSRF, redirect, size, type, timeout, and delay controls.
 - [x] Deterministic ICP scoring with versioned bulk rescore, explainable reason codes, high-intent filtering, and audited manual correction.
 - [ ] Approved provider SDK; no credential theft, CAPTCHA bypass, or core LinkedIn scraper.
-- [ ] Outreach draft review, export, consent/legal-basis, and retention tools.
+- [x] Outreach draft review, exact-revision approval and CSV export, consent/legal-basis gates, JSON data export, retention review filters, and explicit deletion tools.
 
 ## Milestone 4 — local SEO lab
 

@@ -28,8 +28,19 @@ from app.lead_store import (
     restore_lead,
     save_icp_profile,
     suppress_lead,
+    update_lead_compliance,
     update_lead_score_override,
     update_lead_status,
+)
+from app.outreach_store import (
+    create_outreach_draft,
+    decide_outreach_draft,
+    delete_lead_data,
+    edit_outreach_draft,
+    export_lead_data,
+    export_outreach_draft,
+    list_outreach_drafts,
+    outreach_generation_context,
 )
 from app.poller import TelegramPoller
 from app.scheduler import LocalScheduler
@@ -41,10 +52,16 @@ from app.schemas import (
     GeneratePostRequest,
     GooglePlacesSearchRequest,
     IcpProfileUpdate,
+    LeadComplianceUpdate,
+    LeadDeleteRequest,
     LeadImportRequest,
     LeadScoreOverrideUpdate,
     LeadStatusUpdate,
     LeadSuppressionUpdate,
+    OutreachDecisionRequest,
+    OutreachDraftUpdate,
+    OutreachExportRequest,
+    OutreachGenerateRequest,
     PollingUpdate,
     ProviderUpdate,
     PublishRequest,
@@ -56,7 +73,7 @@ from app.schemas import (
 )
 from app.services.crawler import crawl_website
 from app.services.google_places import search_google_places
-from app.services.provider import generate_content, test_provider, validate_base_url
+from app.services.provider import generate_content, generate_outreach, test_provider, validate_base_url
 from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.telegram import (
     delete_webhook,
@@ -170,6 +187,8 @@ def get_leads(
     allowed_statuses = {
         "active",
         "high-intent",
+        "outreach-ready",
+        "retention-expired",
         "new",
         "qualified",
         "contacted",
@@ -244,9 +263,7 @@ def remove_lead_suppression(lead_id: str) -> dict[str, Any]:
 
 
 @app.put("/api/leads/{lead_id}/score-override")
-def save_lead_score_override(
-    lead_id: str, payload: LeadScoreOverrideUpdate
-) -> dict[str, Any]:
+def save_lead_score_override(lead_id: str, payload: LeadScoreOverrideUpdate) -> dict[str, Any]:
     lead = update_lead_score_override(lead_id, payload)
     return {"ok": True, "lead": lead, "state": state_response()}
 
@@ -255,6 +272,56 @@ def save_lead_score_override(
 def delete_lead_score_override(lead_id: str) -> dict[str, Any]:
     lead = clear_lead_score_override(lead_id)
     return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.put("/api/leads/{lead_id}/compliance")
+def save_lead_compliance(lead_id: str, payload: LeadComplianceUpdate) -> dict[str, Any]:
+    lead = update_lead_compliance(lead_id, payload)
+    return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.get("/api/leads/{lead_id}/outreach-drafts")
+def get_outreach_drafts(lead_id: str) -> dict[str, object]:
+    return list_outreach_drafts(lead_id)
+
+
+@app.post("/api/leads/{lead_id}/outreach-drafts")
+async def generate_lead_outreach(lead_id: str, payload: OutreachGenerateRequest) -> dict[str, object]:
+    provider = provider_runtime()
+    if not provider["base_url"] or not provider["model"]:
+        raise AppError("Connect an AI provider and select a model first.")
+    lead = outreach_generation_context(lead_id)
+    generated = await generate_outreach(provider, payload.model_dump(), lead, workspace_runtime())
+    draft = create_outreach_draft(lead_id, payload, generated, provider)
+    return {"ok": True, "draft": draft, "state": state_response()}
+
+
+@app.put("/api/outreach-drafts/{draft_id}")
+def update_outreach_draft(draft_id: str, payload: OutreachDraftUpdate) -> dict[str, object]:
+    draft = edit_outreach_draft(draft_id, payload)
+    return {"ok": True, "draft": draft, "state": state_response()}
+
+
+@app.post("/api/outreach-drafts/{draft_id}/decision")
+def save_outreach_decision(draft_id: str, payload: OutreachDecisionRequest) -> dict[str, object]:
+    draft = decide_outreach_draft(draft_id, payload)
+    return {"ok": True, "draft": draft, "state": state_response()}
+
+
+@app.post("/api/outreach-drafts/{draft_id}/export")
+def create_outreach_export(draft_id: str, payload: OutreachExportRequest) -> dict[str, object]:
+    return {"ok": True, **export_outreach_draft(draft_id, payload.revision)}
+
+
+@app.post("/api/leads/{lead_id}/data-export")
+def create_lead_data_export(lead_id: str) -> dict[str, object]:
+    return {"ok": True, **export_lead_data(lead_id)}
+
+
+@app.delete("/api/leads/{lead_id}")
+def delete_lead(lead_id: str, payload: LeadDeleteRequest) -> dict[str, object]:
+    result = delete_lead_data(lead_id, payload)
+    return {"ok": True, **result, "state": state_response()}
 
 
 @app.put("/api/settings/workspace")
@@ -310,7 +377,9 @@ async def configure_polling(payload: PollingUpdate) -> dict[str, Any]:
     await telegram_poller.refresh()
     return {
         "ok": True,
-        "message": "Local Telegram approvals started." if payload.enabled else "Local Telegram approvals stopped.",
+        "message": "Local Telegram approvals started."
+        if payload.enabled
+        else "Local Telegram approvals stopped.",
         "state": state_response(),
     }
 

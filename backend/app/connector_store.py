@@ -20,7 +20,9 @@ def _decrypt_secrets(value: str) -> dict[str, str]:
         payload = json.loads(decrypt_secret(value))
     except (RuntimeError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise RuntimeError("Saved connector secrets could not be decrypted.") from error
-    if not isinstance(payload, dict) or not all(isinstance(key, str) and isinstance(item, str) for key, item in payload.items()):
+    if not isinstance(payload, dict) or not all(
+        isinstance(key, str) and isinstance(item, str) for key, item in payload.items()
+    ):
         raise RuntimeError("Saved connector secrets have an invalid shape.")
     return payload
 
@@ -54,8 +56,7 @@ def _public_account(
         "remoteAccountId": account.remote_account_id,
         "lastVerifiedAt": account.last_verified_at,
         "lastError": vault_error or account.last_error,
-        "listener": listener_status
-        or {"active": False, "status": "stopped", "lastError": None},
+        "listener": listener_status or {"active": False, "status": "stopped", "lastError": None},
         "createdAt": account.created_at,
         "updatedAt": account.updated_at,
     }
@@ -66,7 +67,9 @@ def public_connector_state(
 ) -> dict[str, Any]:
     listener_statuses = listener_statuses or {}
     with read_session() as session:
-        accounts = list(session.scalars(select(ConnectorAccount).order_by(ConnectorAccount.created_at.desc())).all())
+        accounts = list(
+            session.scalars(select(ConnectorAccount).order_by(ConnectorAccount.created_at.desc())).all()
+        )
         return {
             "catalog": connector_catalog(),
             "accounts": [
@@ -156,7 +159,10 @@ def create_connector(payload: ConnectorAccountUpsert) -> dict[str, Any]:
             id=str(uuid4()),
             adapter_id=payload.adapter_id,
             name=payload.name,
-            config={key: value.strip() if isinstance(value, str) else value for key, value in payload.config.items()},
+            config={
+                key: value.strip() if isinstance(value, str) else value
+                for key, value in payload.config.items()
+            },
             encrypted_secrets=_encrypt_secrets(payload.secrets),
             scopes=payload.scopes,
             enabled=payload.enabled,

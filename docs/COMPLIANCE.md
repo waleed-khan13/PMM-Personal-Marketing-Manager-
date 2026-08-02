@@ -38,7 +38,7 @@ References:
 - Collect only fields needed for the configured business purpose and retain evidence/source URLs.
 - Provide suppression, correction, export, and deletion mechanisms.
 
-Version 0.6 implements identified sequential crawling, public-address validation, same-domain redirect enforcement, robots rules and crawl delay, strict time/size/content limits, contact-page selection, source URLs, and suppression. General lead export/deletion and a configurable operator contact URL remain roadmap work.
+Version 0.8 implements identified sequential crawling, public-address validation, same-domain redirect enforcement, robots rules and crawl delay, strict time/size/content limits, contact-page selection, source URLs, suppression, per-lead JSON export, and explicit lead deletion. A configurable operator contact URL remains roadmap work.
 
 ## Lead qualification
 
@@ -48,7 +48,7 @@ Version 0.6 implements identified sequential crawling, public-address validation
 - Keep human corrections separate from the computed score, require a written reason, and audit both correction and reset actions.
 - Treat the score as workflow prioritization, not proof of consent or a legal basis for outreach.
 
-Version 0.7 implements local deterministic ICP profiles, full-vault rescoring, explanation history for the current profile version, high-intent filtering, and auditable manual correction. It makes no automated outreach decision.
+Version 0.8 keeps local deterministic ICP profiles, full-vault rescoring, explanation history for the current profile version, high-intent filtering, and auditable manual correction. A score never establishes outreach eligibility.
 
 ## Outreach
 
@@ -56,6 +56,8 @@ Version 0.7 implements local deterministic ICP profiles, full-vault rescoring, e
 - Require a configured legal basis/consent state, sender identity, suppression check, and jurisdiction policy before sending.
 - Enforce unsubscribe/opt-out immediately and across all connectors.
 - Prohibit purchased-list spam, deceptive identity, fake personalization, and sensitive-trait targeting.
+
+Version 0.8 requires an operator-recorded legal basis, compatible consent state, supporting purpose/evidence note, current retention review date, deliverable email, and suppression check before generation. AI output is an editable plain-text email draft. Edits increment the revision and invalidate approval; only the exact approved revision can be exported as CSV. The core has no outreach send endpoint. Retention expiry blocks generation/export and surfaces a review filter, but never silently deletes data. Permanent deletion requires a written reason and the exact typed confirmation `DELETE`; a non-personal audit event remains.
 
 ## AI-generated content
 

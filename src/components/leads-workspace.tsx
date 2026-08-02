@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  Building2,
   ExternalLink,
   FileSpreadsheet,
   Globe2,
   Gauge,
   Loader2,
   Mail,
+  MailCheck,
   MapPin,
   Phone,
   PencilLine,
@@ -23,6 +23,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { LeadDiscoveryPanel } from "@/components/lead-discovery-panel";
+import { LeadOutreachDialog } from "@/components/lead-outreach-dialog";
 import { IcpScoringPanel } from "@/components/icp-scoring-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -52,12 +53,14 @@ import type {
 import { parseLeadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
-type LeadFilter = "active" | "high-intent" | LeadStatus | "suppressed";
+type LeadFilter = "active" | "high-intent" | "outreach-ready" | "retention-expired" | LeadStatus | "suppressed";
 type ImportLeadSource = Exclude<LeadSource, "website-crawl">;
 
 const filters: Array<{ value: LeadFilter; label: string }> = [
   { value: "active", label: "All active" },
   { value: "high-intent", label: "High intent (70+)" },
+  { value: "outreach-ready", label: "Outreach-ready" },
+  { value: "retention-expired", label: "Retention review due" },
   { value: "new", label: "New" },
   { value: "qualified", label: "Qualified" },
   { value: "contacted", label: "Contacted" },
@@ -169,6 +172,7 @@ export function LeadsWorkspace({
   const [scoreTarget, setScoreTarget] = useState<Lead | null>(null);
   const [scoreValue, setScoreValue] = useState("");
   const [scoreReason, setScoreReason] = useState("");
+  const [outreachTarget, setOutreachTarget] = useState<Lead | null>(null);
   const preview = useMemo(() => parseLeadCsv(csvText), [csvText]);
 
   const loadLeads = useCallback(async () => {
@@ -326,10 +330,11 @@ export function LeadsWorkspace({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <SummaryCard detail="Stored on this computer" icon={UsersRound} label="Total leads" value={state.leadSummary.total} />
-        <SummaryCard detail="Ready for qualification" icon={Building2} label="Active" value={state.leadSummary.active} />
         <SummaryCard detail="ICP score of 70 or higher" icon={Target} label="High intent" value={state.leadSummary.highIntent} />
+        <SummaryCard detail="Compliance gate completed" icon={MailCheck} label="Outreach-ready" value={state.leadSummary.outreachReady} />
+        <SummaryCard detail="Needs retain or delete review" icon={ShieldAlert} label="Retention due" value={state.leadSummary.retentionExpired} />
         <SummaryCard detail="Never reactivated by import" icon={ShieldCheck} label="Suppressed" value={state.leadSummary.suppressed} />
       </div>
 
@@ -457,7 +462,7 @@ export function LeadsWorkspace({
                             <TableCell className="max-w-56 px-5 py-4 whitespace-normal">
                               <p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>
                               {lead.location ? <p className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-zinc-600"><MapPin className="size-3" />{lead.location}</p> : null}
-                              <div className="mt-2"><LeadStatusBadge lead={lead} /></div>
+                              <div className="mt-2 flex flex-wrap gap-1.5"><LeadStatusBadge lead={lead} />{lead.outreachReady ? <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline"><MailCheck className="size-3" />Ready</Badge> : null}{lead.retentionExpired ? <Badge className="border-red-500/25 bg-red-500/8 text-red-300" variant="outline">Retention due</Badge> : null}</div>
                             </TableCell>
                             <TableCell className="max-w-64 whitespace-normal"><LeadContact lead={lead} /></TableCell>
                             <TableCell><LeadScoreButton lead={lead} onClick={() => openScoreCorrection(lead)} /></TableCell>
@@ -467,9 +472,10 @@ export function LeadsWorkspace({
                             </TableCell>
                             <TableCell className="pr-5 text-right">
                               {lead.suppressed ? (
-                                <Button disabled={busy === `restore-${lead.id}`} onClick={() => void restore(lead)} size="sm" variant="outline">{busy === `restore-${lead.id}` ? <Loader2 className="animate-spin" /> : <RefreshCw />}Restore</Button>
+                                <div className="inline-flex items-center gap-2"><Button aria-label={`Open data controls for ${lead.businessName || "lead"}`} onClick={() => setOutreachTarget(lead)} size="icon-sm" variant="ghost"><MailCheck /></Button><Button disabled={busy === `restore-${lead.id}`} onClick={() => void restore(lead)} size="sm" variant="outline">{busy === `restore-${lead.id}` ? <Loader2 className="animate-spin" /> : <RefreshCw />}Restore</Button></div>
                               ) : (
                                 <div className="inline-flex items-center gap-2">
+                                  <Button aria-label={`Open reviewed outreach for ${lead.businessName || "lead"}`} onClick={() => setOutreachTarget(lead)} size="icon-sm" variant="ghost"><MailCheck /></Button>
                                   <Select disabled={busy === `status-${lead.id}`} onValueChange={(value) => value && void changeStatus(lead, value as LeadStatus)} value={lead.status}>
                                     <SelectTrigger className="h-7 w-28 rounded-md border-zinc-800 bg-black text-[11px]"><SelectValue>{lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}</SelectValue></SelectTrigger>
                                     <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="new">New</SelectItem><SelectItem value="qualified">Qualified</SelectItem><SelectItem value="contacted">Contacted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent>
@@ -486,7 +492,7 @@ export function LeadsWorkspace({
                   <div className="divide-y divide-zinc-900 md:hidden">
                     {list.items.map((lead) => (
                       <div className="space-y-3 p-4" key={lead.id}>
-                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>{lead.location ? <p className="mt-1 text-[11px] text-zinc-600">{lead.location}</p> : null}</div><LeadStatusBadge lead={lead} /></div>
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>{lead.location ? <p className="mt-1 text-[11px] text-zinc-600">{lead.location}</p> : null}</div><div className="flex flex-wrap justify-end gap-1.5"><LeadStatusBadge lead={lead} />{lead.outreachReady ? <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline"><MailCheck className="size-3" />Ready</Badge> : null}</div></div>
                         <LeadContact lead={lead} />
                         <div className="flex items-center justify-between gap-3"><span className="text-[10px] tracking-wider text-zinc-700 uppercase">ICP fit</span><LeadScoreButton lead={lead} onClick={() => openScoreCorrection(lead)} /></div>
                         <div className="flex items-center justify-between gap-3"><Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">{lead.sourceLabel}</Badge><span className="text-[10px] text-zinc-700">{lead.evidence.length} source record{lead.evidence.length === 1 ? "" : "s"}</span></div>
@@ -499,7 +505,7 @@ export function LeadsWorkspace({
                               <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="new">New</SelectItem><SelectItem value="qualified">Qualified</SelectItem><SelectItem value="contacted">Contacted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent>
                             </Select>
                           )}
-                          {lead.suppressed ? <Button onClick={() => void restore(lead)} size="sm" variant="outline"><RefreshCw />Restore</Button> : <Button onClick={() => setSuppressionTarget(lead)} size="sm" variant="ghost"><ShieldAlert />Suppress</Button>}
+                          <div className="flex flex-wrap justify-end gap-2"><Button onClick={() => setOutreachTarget(lead)} size="sm" variant="outline"><MailCheck />{lead.suppressed ? "Data controls" : "Outreach"}</Button>{lead.suppressed ? <Button onClick={() => void restore(lead)} size="sm" variant="outline"><RefreshCw />Restore</Button> : <Button onClick={() => setSuppressionTarget(lead)} size="sm" variant="ghost"><ShieldAlert />Suppress</Button>}</div>
                         </div>
                       </div>
                     ))}
@@ -515,6 +521,19 @@ export function LeadsWorkspace({
           </div>
         </div>
       </div>
+
+      <LeadOutreachDialog
+        key={outreachTarget?.id ?? "closed-outreach"}
+        lead={outreachTarget}
+        onChanged={async (changedLead, nextState) => {
+          onStateChange(nextState);
+          setOutreachTarget(changedLead);
+          await loadLeads();
+        }}
+        onOpenChange={(open) => { if (!open) setOutreachTarget(null); }}
+        open={Boolean(outreachTarget)}
+        providerConfigured={state.provider.configured}
+      />
 
       <Dialog onOpenChange={(open) => { if (!open) { setSuppressionTarget(null); setSuppressionReason(""); } }} open={Boolean(suppressionTarget)}>
         <DialogContent>

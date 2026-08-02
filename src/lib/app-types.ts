@@ -6,6 +6,9 @@ export type ConnectorCapability = "approval" | "notification" | "publish" | "lea
 export type ConnectorAvailability = "available" | "planned" | "access-gated" | "notification-only" | "built-in";
 export type LeadSource = "csv" | "linkedin-export" | "crm-export" | "manual" | "website-crawl";
 export type LeadStatus = "new" | "qualified" | "contacted" | "archived";
+export type ConsentStatus = "unknown" | "granted" | "not_applicable" | "denied" | "withdrawn";
+export type LegalBasis = "consent" | "legitimate_interest" | "existing_customer" | "contract" | "other";
+export type OutreachDraftStatus = "draft" | "approved" | "rejected" | "exported";
 
 export interface WorkspaceSettings {
   name: string;
@@ -60,7 +63,7 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead" | "outreach";
   entityId: string;
   summary: string;
   createdAt: string;
@@ -193,6 +196,14 @@ export interface Lead {
   manualScoreReason: string | null;
   manualScoreUpdatedAt: string | null;
   effectiveScore: number | null;
+  consentStatus: ConsentStatus;
+  legalBasis: LegalBasis | null;
+  legalBasisNote: string;
+  retentionUntil: string | null;
+  complianceReviewedAt: string | null;
+  outreachReady: boolean;
+  outreachBlockers: string[];
+  retentionExpired: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -205,6 +216,33 @@ export interface LeadSummary {
   qualified: number;
   contacted: number;
   highIntent: number;
+  outreachReady: number;
+  retentionExpired: number;
+}
+
+export interface OutreachDraft {
+  id: string;
+  leadId: string;
+  revision: number;
+  channel: "email";
+  objective: string;
+  tone: string;
+  subject: string;
+  body: string;
+  rationale: string;
+  status: OutreachDraftStatus;
+  providerKind: ProviderKind;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt: string | null;
+  exportedAt: string | null;
+}
+
+export interface LocalFileExport {
+  filename: string;
+  mimeType: string;
+  content: string;
 }
 
 export interface LeadListResponse {

@@ -396,7 +396,13 @@ def update_provider(payload: ProviderUpdate) -> None:
         provider.kind = payload.kind
         provider.base_url = payload.base_url.rstrip("/")
         provider.model = payload.model
-        provider.api_key = encrypt_secret(payload.api_key) if payload.api_key else provider.api_key if same_endpoint else None
+        provider.api_key = (
+            encrypt_secret(payload.api_key)
+            if payload.api_key
+            else provider.api_key
+            if same_endpoint
+            else None
+        )
         provider.updated_at = utc_now()
         _append_audit(
             session,
@@ -439,7 +445,9 @@ def set_telegram_polling(enabled: bool) -> None:
             action="telegram.polling_started" if enabled else "telegram.polling_stopped",
             entity_type="settings",
             entity_id="telegram",
-            summary="Local Telegram approval polling started." if enabled else "Local Telegram approval polling stopped.",
+            summary="Local Telegram approval polling started."
+            if enabled
+            else "Local Telegram approval polling stopped.",
         )
 
 
@@ -480,7 +488,9 @@ def workspace_runtime() -> dict[str, str]:
         }
 
 
-def create_post(*, request: dict[str, Any], content: dict[str, Any], provider: dict[str, str]) -> dict[str, Any]:
+def create_post(
+    *, request: dict[str, Any], content: dict[str, Any], provider: dict[str, str]
+) -> dict[str, Any]:
     now = utc_now()
     post = Post(
         id=str(uuid4()),
@@ -629,7 +639,11 @@ def process_telegram_update(update: dict[str, Any]) -> tuple[str, str] | None:
         chat = message.get("chat") if isinstance(message, dict) else None
         callback_chat = chat.get("id") if isinstance(chat, dict) else None
         if telegram.chat_id.lstrip("-").isdigit() and str(callback_chat) != telegram.chat_id:
-            return (callback_id, "This chat is not authorized for LocalGrowth approvals.") if callback_id else None
+            return (
+                (callback_id, "This chat is not authorized for LocalGrowth approvals.")
+                if callback_id
+                else None
+            )
         post = session.get(Post, post_id)
         if post is None:
             answer = "Draft no longer exists."
@@ -643,7 +657,9 @@ def process_telegram_update(update: dict[str, Any]) -> tuple[str, str] | None:
             post.approved_at = utc_now() if approved else None
             post.updated_at = utc_now()
             post.last_error = None
-            answer = f"Revision {revision} approved and locked." if approved else f"Revision {revision} rejected."
+            answer = (
+                f"Revision {revision} approved and locked." if approved else f"Revision {revision} rejected."
+            )
             _append_audit(
                 session,
                 action="post.approved.telegram" if approved else "post.rejected.telegram",
@@ -787,7 +803,9 @@ def set_scheduler_paused(paused: bool) -> None:
         )
 
 
-def schedule_post(post_id: str, payload: SchedulePostRequest, catch_up_hours: int) -> tuple[dict[str, Any], bool]:
+def schedule_post(
+    post_id: str, payload: SchedulePostRequest, catch_up_hours: int
+) -> tuple[dict[str, Any], bool]:
     now = datetime.now(UTC)
     if payload.run_at < now - timedelta(hours=catch_up_hours):
         raise AppError(f"Scheduled time is outside the {catch_up_hours}-hour catch-up window.")
@@ -938,7 +956,9 @@ def recover_stale_jobs(stale_minutes: int) -> int:
             if job.kind == "post.publish" and post is not None and post.status == "publishing":
                 job.status = "failed"
                 job.completed_at = now
-                job.last_error = "Delivery state is uncertain after an interrupted publish; review before retrying."
+                job.last_error = (
+                    "Delivery state is uncertain after an interrupted publish; review before retrying."
+                )
                 post.status = "failed"
                 post.last_error = job.last_error
                 post.updated_at = now
@@ -1016,7 +1036,9 @@ def fail_job(job_id: str, message: str, *, retryable: bool) -> None:
             job.status = "retrying"
             job.run_at = _utc_iso(now + timedelta(seconds=delay_seconds))
             action = "job.retry_scheduled"
-            summary = f"Job retry {job.attempts + 1}/{job.max_attempts} scheduled after a local preflight failure."
+            summary = (
+                f"Job retry {job.attempts + 1}/{job.max_attempts} scheduled after a local preflight failure."
+            )
         else:
             job.status = "failed"
             job.completed_at = _utc_iso(now)
