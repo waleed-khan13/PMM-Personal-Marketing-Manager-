@@ -26,6 +26,12 @@
 /.playwright-cli/
 /graphify-out/
 
+# Python backend
+/backend/.venv/
+/backend/.pytest_cache/
+**/__pycache__/
+*.py[cod]
+
 # OS and editors
 .DS_Store
 Thumbs.db

@@ -1,6 +1,7 @@
 export type ProviderKind = "ollama" | "openai-compatible";
 export type ContentChannel = "linkedin" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";
+export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
 
 export interface WorkspaceSettings {
   name: string;
@@ -22,8 +23,10 @@ export interface PublicTelegramSettings {
   chatId: string;
   hasBotToken: boolean;
   configured: boolean;
-  webhookUrl: string;
-  webhookConfigured: boolean;
+  pollingEnabled: boolean;
+  pollingActive: boolean;
+  pollingStatus: string;
+  lastError: string | null;
   updatedAt: string | null;
 }
 
@@ -52,10 +55,37 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler";
   entityId: string;
   summary: string;
   createdAt: string;
+}
+
+export interface LocalJob {
+  id: string;
+  kind: "post.publish";
+  status: LocalJobStatus;
+  payload: {
+    post_id: string;
+    revision: number;
+    channel: ContentChannel;
+  };
+  runAt: string;
+  attempts: number;
+  maxAttempts: number;
+  lockedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicSchedulerState {
+  paused: boolean;
+  active: boolean;
+  status: string;
+  lastError: string | null;
+  catchUpHours: number;
 }
 
 export interface PublicAppState {
@@ -63,11 +93,14 @@ export interface PublicAppState {
   provider: PublicProviderSettings;
   telegram: PublicTelegramSettings;
   posts: GeneratedPost[];
+  jobs: LocalJob[];
+  scheduler: PublicSchedulerState;
   audit: AuditEvent[];
   runtime: {
     version: string;
     mode: string;
     persistent: boolean;
+    database: string;
   };
 }
 

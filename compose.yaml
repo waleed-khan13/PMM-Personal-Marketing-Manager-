@@ -1,21 +1,38 @@
 name: localgrowth-os
 
 services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      LOCALGROWTH_API_HOST: 0.0.0.0
+      LOCALGROWTH_API_PORT: 8000
+      LOCALGROWTH_DATA_DIR: /data
+      LOCALGROWTH_TELEGRAM_POLL_TIMEOUT: ${LOCALGROWTH_TELEGRAM_POLL_TIMEOUT:-25}
+    volumes:
+      - localgrowth-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     environment:
-      APP_URL: ${APP_URL:-http://localhost:3000}
-      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-local_trusted}
-      LOCALGROWTH_DATA_DIR: /app/data
-      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      LOCALGROWTH_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
-    volumes:
-      - localgrowth-data:/app/data
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

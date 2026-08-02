@@ -1,0 +1,39 @@
+[project]
+name = "localgrowth-api"
+version = "0.3.0"
+description = "Local-only FastAPI service for LocalGrowth OS"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.18,<2",
+  "cryptography>=44,<47",
+  "fastapi>=0.139,<1",
+  "httpx>=0.28,<1",
+  "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.28,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<10",
+  "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"

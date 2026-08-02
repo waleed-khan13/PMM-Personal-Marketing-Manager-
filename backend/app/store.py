@@ -1,0 +1,962 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.crypto import decrypt_secret, encrypt_secret, serialize_legacy_secret
+from app.database import read_session, run_migrations, write_session
+from app.errors import AppError
+from app.models import (
+    AppMetadata,
+    AuditEvent,
+    LocalJob,
+    Post,
+    ProviderSettings,
+    TelegramSettings,
+    Workspace,
+)
+from app.schemas import EditPostRequest, ProviderUpdate, SchedulePostRequest, TelegramUpdate, WorkspaceUpdate
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _utc_iso(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _text(value: object, maximum: int, default: str = "") -> str:
+    if not isinstance(value, str):
+        return default
+    return value.strip()[:maximum]
+
+
+def _legacy_secret(value: object) -> str | None:
+    return serialize_legacy_secret(value)
+
+
+def initialize_storage() -> None:
+    settings = get_settings()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    run_migrations()
+    with write_session() as session:
+        if session.get(Workspace, 1) is not None:
+            _ensure_singletons(session)
+            return
+        if settings.legacy_json_path.exists():
+            _import_legacy_json(session, settings.legacy_json_path)
+        else:
+            _seed_defaults(session)
+
+
+def _ensure_singletons(session: Session) -> None:
+    if session.get(ProviderSettings, 1) is None:
+        session.add(
+            ProviderSettings(
+                id=1,
+                kind="ollama",
+                base_url="http://127.0.0.1:11434",
+                model="",
+                api_key=None,
+                updated_at=None,
+            )
+        )
+    if session.get(TelegramSettings, 1) is None:
+        session.add(
+            TelegramSettings(
+                id=1,
+                chat_id="",
+                bot_token=None,
+                polling_enabled=False,
+                last_update_id=0,
+                updated_at=None,
+            )
+        )
+
+
+def _seed_defaults(session: Session) -> None:
+    session.add(
+        Workspace(id=1, name="My workspace", business_name="", description="", timezone="Asia/Karachi")
+    )
+    _ensure_singletons(session)
+    session.add(AppMetadata(key="storage_initialized_at", value=utc_now()))
+
+
+def _import_legacy_json(session: Session, path: Path) -> None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("The existing localgrowth.json store could not be imported.") from error
+    if not isinstance(payload, dict):
+        raise TypeError("The existing localgrowth.json store has an invalid shape.")
+
+    workspace = payload.get("workspace") if isinstance(payload.get("workspace"), dict) else {}
+    provider = payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
+    telegram = payload.get("telegram") if isinstance(payload.get("telegram"), dict) else {}
+    session.add(
+        Workspace(
+            id=1,
+            name=_text(workspace.get("name"), 80, "My workspace") or "My workspace",
+            business_name=_text(workspace.get("businessName"), 120),
+            description=_text(workspace.get("description"), 2_000),
+            timezone=_text(workspace.get("timezone"), 80, "Asia/Karachi") or "Asia/Karachi",
+        )
+    )
+    session.add(
+        ProviderSettings(
+            id=1,
+            kind=_text(provider.get("kind"), 40, "ollama") or "ollama",
+            base_url=_text(provider.get("baseUrl"), 2_048, "http://127.0.0.1:11434")
+            or "http://127.0.0.1:11434",
+            model=_text(provider.get("model"), 180),
+            api_key=_legacy_secret(provider.get("apiKey")),
+            updated_at=_text(provider.get("updatedAt"), 40) or None,
+        )
+    )
+    session.add(
+        TelegramSettings(
+            id=1,
+            chat_id=_text(telegram.get("chatId"), 160),
+            bot_token=_legacy_secret(telegram.get("botToken")),
+            polling_enabled=False,
+            last_update_id=max(int(telegram.get("lastUpdateId") or 0), 0),
+            updated_at=_text(telegram.get("updatedAt"), 40) or None,
+        )
+    )
+
+    allowed_channels = {"linkedin", "instagram", "facebook", "x", "telegram", "blog"}
+    allowed_statuses = {"pending", "approved", "rejected", "publishing", "published", "failed"}
+    for raw_post in payload.get("posts", []):
+        if not isinstance(raw_post, dict):
+            continue
+        post_id = _text(raw_post.get("id"), 36) or str(uuid4())
+        created_at = _text(raw_post.get("createdAt"), 40) or utc_now()
+        channel = _text(raw_post.get("channel"), 40, "linkedin")
+        status = _text(raw_post.get("status"), 40, "pending")
+        hashtags = raw_post.get("hashtags") if isinstance(raw_post.get("hashtags"), list) else []
+        session.add(
+            Post(
+                id=post_id,
+                revision=max(int(raw_post.get("revision") or 1), 1),
+                topic=_text(raw_post.get("topic"), 1_000),
+                channel=channel if channel in allowed_channels else "linkedin",
+                tone=_text(raw_post.get("tone"), 160, "Clear and confident"),
+                objective=_text(raw_post.get("objective"), 500, "Build useful awareness"),
+                title=_text(raw_post.get("title"), 160, "Imported draft"),
+                body=_text(raw_post.get("body"), 12_000),
+                hashtags=[_text(tag, 80) for tag in hashtags if _text(tag, 80)][:20],
+                rationale=_text(raw_post.get("rationale"), 500),
+                status=status if status in allowed_statuses else "pending",
+                provider_kind=_text(raw_post.get("providerKind"), 40, "ollama"),
+                model=_text(raw_post.get("model"), 180),
+                created_at=created_at,
+                updated_at=_text(raw_post.get("updatedAt"), 40) or created_at,
+                approved_at=_text(raw_post.get("approvedAt"), 40) or None,
+                published_at=_text(raw_post.get("publishedAt"), 40) or None,
+                remote_id=_text(raw_post.get("remoteId"), 255) or None,
+                last_error=_text(raw_post.get("lastError"), 2_000) or None,
+            )
+        )
+
+    for raw_event in payload.get("audit", [])[:200]:
+        if not isinstance(raw_event, dict):
+            continue
+        session.add(
+            AuditEvent(
+                id=_text(raw_event.get("id"), 36) or str(uuid4()),
+                action=_text(raw_event.get("action"), 120, "legacy.imported"),
+                entity_type=_text(raw_event.get("entityType"), 40, "settings"),
+                entity_id=_text(raw_event.get("entityId"), 255, "legacy"),
+                summary=_text(raw_event.get("summary"), 2_000, "Imported from the v0.2 local store."),
+                created_at=_text(raw_event.get("createdAt"), 40) or utc_now(),
+            )
+        )
+    session.add(AppMetadata(key="legacy_json_imported_at", value=utc_now()))
+    _append_audit(
+        session,
+        action="storage.sqlite_imported",
+        entity_type="settings",
+        entity_id="storage",
+        summary="The v0.2 JSON store was imported into the local SQLite database.",
+    )
+
+
+def _append_audit(
+    session: Session,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    summary: str,
+) -> None:
+    session.add(
+        AuditEvent(
+            id=str(uuid4()),
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            summary=summary,
+            created_at=utc_now(),
+        )
+    )
+    session.flush()
+    old_ids = list(
+        session.scalars(select(AuditEvent.id).order_by(AuditEvent.created_at.desc()).offset(200)).all()
+    )
+    if old_ids:
+        session.execute(delete(AuditEvent).where(AuditEvent.id.in_(old_ids)))
+
+
+def _post_dict(post: Post) -> dict[str, Any]:
+    return {
+        "id": post.id,
+        "revision": post.revision,
+        "topic": post.topic,
+        "channel": post.channel,
+        "tone": post.tone,
+        "objective": post.objective,
+        "title": post.title,
+        "body": post.body,
+        "hashtags": list(post.hashtags or []),
+        "rationale": post.rationale,
+        "status": post.status,
+        "providerKind": post.provider_kind,
+        "model": post.model,
+        "createdAt": post.created_at,
+        "updatedAt": post.updated_at,
+        "approvedAt": post.approved_at,
+        "publishedAt": post.published_at,
+        "remoteId": post.remote_id,
+        "lastError": post.last_error,
+    }
+
+
+def _job_dict(job: LocalJob) -> dict[str, Any]:
+    return {
+        "id": job.id,
+        "kind": job.kind,
+        "status": job.status,
+        "payload": dict(job.payload or {}),
+        "runAt": job.run_at,
+        "attempts": job.attempts,
+        "maxAttempts": job.max_attempts,
+        "lockedAt": job.locked_at,
+        "completedAt": job.completed_at,
+        "lastError": job.last_error,
+        "createdAt": job.created_at,
+        "updatedAt": job.updated_at,
+    }
+
+
+def public_state(
+    polling: dict[str, Any] | None = None,
+    scheduler: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    polling = polling or {"active": False, "status": "stopped", "lastError": None}
+    scheduler = scheduler or {"active": False, "status": "stopped", "lastError": None}
+    with read_session() as session:
+        workspace = session.get(Workspace, 1)
+        provider = session.get(ProviderSettings, 1)
+        telegram = session.get(TelegramSettings, 1)
+        if workspace is None or provider is None or telegram is None:
+            raise RuntimeError("Local storage has not been initialized.")
+        posts = list(session.scalars(select(Post).order_by(Post.created_at.desc())).all())
+        audit = list(
+            session.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(200)).all()
+        )
+        jobs = list(session.scalars(select(LocalJob).order_by(LocalJob.created_at.desc()).limit(100)).all())
+        paused = session.get(AppMetadata, "scheduler_paused")
+        return {
+            "workspace": {
+                "name": workspace.name,
+                "businessName": workspace.business_name,
+                "description": workspace.description,
+                "timezone": workspace.timezone,
+            },
+            "provider": {
+                "kind": provider.kind,
+                "baseUrl": provider.base_url,
+                "model": provider.model,
+                "hasApiKey": bool(provider.api_key),
+                "configured": bool(provider.base_url and provider.model),
+                "updatedAt": provider.updated_at,
+            },
+            "telegram": {
+                "chatId": telegram.chat_id,
+                "hasBotToken": bool(telegram.bot_token),
+                "configured": bool(telegram.chat_id and telegram.bot_token),
+                "pollingEnabled": telegram.polling_enabled,
+                "pollingActive": bool(polling.get("active")),
+                "pollingStatus": str(polling.get("status") or "stopped"),
+                "lastError": polling.get("lastError"),
+                "updatedAt": telegram.updated_at,
+            },
+            "posts": [_post_dict(post) for post in posts],
+            "jobs": [_job_dict(job) for job in jobs],
+            "scheduler": {
+                "paused": paused is not None and paused.value == "true",
+                "active": bool(scheduler.get("active")),
+                "status": str(scheduler.get("status") or "stopped"),
+                "lastError": scheduler.get("lastError"),
+                "catchUpHours": int(scheduler.get("catchUpHours") or 24),
+            },
+            "audit": [
+                {
+                    "id": event.id,
+                    "action": event.action,
+                    "entityType": event.entity_type,
+                    "entityId": event.entity_id,
+                    "summary": event.summary,
+                    "createdAt": event.created_at,
+                }
+                for event in audit
+            ],
+            "runtime": {
+                "version": "0.3.0",
+                "mode": "local_only",
+                "persistent": True,
+                "database": "sqlite",
+            },
+        }
+
+
+def update_workspace(payload: WorkspaceUpdate) -> None:
+    with write_session() as session:
+        workspace = session.get(Workspace, 1)
+        if workspace is None:
+            raise RuntimeError("Workspace settings are missing.")
+        workspace.name = payload.name
+        workspace.business_name = payload.business_name
+        workspace.description = payload.description
+        workspace.timezone = payload.timezone or "Asia/Karachi"
+        _append_audit(
+            session,
+            action="workspace.updated",
+            entity_type="settings",
+            entity_id="workspace",
+            summary="Business profile updated.",
+        )
+
+
+def update_provider(payload: ProviderUpdate) -> None:
+    with write_session() as session:
+        provider = session.get(ProviderSettings, 1)
+        if provider is None:
+            raise RuntimeError("Provider settings are missing.")
+        same_endpoint = provider.kind == payload.kind and provider.base_url == payload.base_url
+        provider.kind = payload.kind
+        provider.base_url = payload.base_url.rstrip("/")
+        provider.model = payload.model
+        provider.api_key = encrypt_secret(payload.api_key) if payload.api_key else provider.api_key if same_endpoint else None
+        provider.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="provider.updated",
+            entity_type="provider",
+            entity_id=provider.kind,
+            summary=f"{provider.kind} provider settings saved.",
+        )
+
+
+def update_telegram(payload: TelegramUpdate) -> None:
+    with write_session() as session:
+        telegram = session.get(TelegramSettings, 1)
+        if telegram is None:
+            raise RuntimeError("Telegram settings are missing.")
+        if payload.bot_token:
+            telegram.bot_token = encrypt_secret(payload.bot_token)
+            telegram.polling_enabled = False
+            telegram.last_update_id = 0
+        telegram.chat_id = payload.chat_id
+        telegram.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="telegram.updated",
+            entity_type="settings",
+            entity_id="telegram",
+            summary="Telegram connection settings saved.",
+        )
+
+
+def set_telegram_polling(enabled: bool) -> None:
+    with write_session() as session:
+        telegram = session.get(TelegramSettings, 1)
+        if telegram is None or not telegram.bot_token or not telegram.chat_id:
+            raise AppError("Save and test Telegram before starting local approvals.")
+        telegram.polling_enabled = enabled
+        telegram.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="telegram.polling_started" if enabled else "telegram.polling_stopped",
+            entity_type="settings",
+            entity_id="telegram",
+            summary="Local Telegram approval polling started." if enabled else "Local Telegram approval polling stopped.",
+        )
+
+
+def provider_runtime() -> dict[str, str]:
+    with read_session() as session:
+        provider = session.get(ProviderSettings, 1)
+        if provider is None:
+            raise RuntimeError("Provider settings are missing.")
+        return {
+            "kind": provider.kind,
+            "base_url": provider.base_url,
+            "model": provider.model,
+            "api_key": decrypt_secret(provider.api_key),
+        }
+
+
+def telegram_runtime() -> dict[str, Any]:
+    with read_session() as session:
+        telegram = session.get(TelegramSettings, 1)
+        if telegram is None:
+            raise RuntimeError("Telegram settings are missing.")
+        return {
+            "chat_id": telegram.chat_id,
+            "bot_token": decrypt_secret(telegram.bot_token),
+            "polling_enabled": telegram.polling_enabled,
+            "last_update_id": telegram.last_update_id,
+        }
+
+
+def workspace_runtime() -> dict[str, str]:
+    with read_session() as session:
+        workspace = session.get(Workspace, 1)
+        if workspace is None:
+            raise RuntimeError("Workspace settings are missing.")
+        return {
+            "business_name": workspace.business_name,
+            "business_description": workspace.description,
+        }
+
+
+def create_post(*, request: dict[str, Any], content: dict[str, Any], provider: dict[str, str]) -> dict[str, Any]:
+    now = utc_now()
+    post = Post(
+        id=str(uuid4()),
+        revision=1,
+        topic=request["topic"],
+        channel=request["channel"],
+        tone=request["tone"],
+        objective=request["objective"],
+        title=content["title"],
+        body=content["body"],
+        hashtags=content.get("hashtags", []),
+        rationale=content.get("rationale", ""),
+        status="pending",
+        provider_kind=provider["kind"],
+        model=provider["model"],
+        created_at=now,
+        updated_at=now,
+        approved_at=None,
+        published_at=None,
+        remote_id=None,
+        last_error=None,
+    )
+    with write_session() as session:
+        session.add(post)
+        _append_audit(
+            session,
+            action="post.generated",
+            entity_type="post",
+            entity_id=post.id,
+            summary=f"{post.channel} draft generated with {post.model}.",
+        )
+    return _post_dict(post)
+
+
+def record_approval_sent(post_id: str) -> None:
+    with write_session() as session:
+        if session.get(Post, post_id) is None:
+            return
+        _append_audit(
+            session,
+            action="approval.sent",
+            entity_type="post",
+            entity_id=post_id,
+            summary="Approval request sent to Telegram.",
+        )
+
+
+def edit_post(post_id: str, payload: EditPostRequest) -> None:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None:
+            raise AppError("Draft not found.", 404)
+        if post.status == "published":
+            raise AppError("Published content is immutable. Create a new draft instead.")
+        if post.status == "publishing":
+            raise AppError("This draft is currently being published.")
+        post.title = payload.title
+        post.body = payload.body
+        post.hashtags = payload.hashtags
+        post.status = "pending"
+        post.revision += 1
+        post.approved_at = None
+        post.published_at = None
+        post.remote_id = None
+        post.updated_at = utc_now()
+        post.last_error = None
+        _cancel_pending_post_jobs(session, post.id, "Draft edited; scheduled publish cancelled.")
+        _append_audit(
+            session,
+            action="post.edited",
+            entity_type="post",
+            entity_id=post.id,
+            summary="Draft edited; prior approval invalidated.",
+        )
+
+
+def decide_post(post_id: str, revision: int, approved: bool, source: str = "dashboard") -> None:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None:
+            raise AppError("Draft not found.", 404)
+        if post.revision != revision:
+            raise AppError("This draft changed. Review the latest revision before deciding.")
+        if post.status != "pending":
+            raise AppError(f"Only pending drafts can be decided. Current status: {post.status}.")
+        post.status = "approved" if approved else "rejected"
+        post.approved_at = utc_now() if approved else None
+        post.updated_at = utc_now()
+        post.last_error = None
+        suffix = ".telegram" if source == "telegram" else ""
+        _append_audit(
+            session,
+            action=f"post.{'approved' if approved else 'rejected'}{suffix}",
+            entity_type="post",
+            entity_id=post.id,
+            summary=(
+                f"Revision {revision} {'approved' if approved else 'rejected'} from Telegram."
+                if source == "telegram"
+                else "Draft approved and version locked."
+                if approved
+                else "Draft rejected."
+            ),
+        )
+
+
+def process_telegram_update(update: dict[str, Any]) -> tuple[str, str] | None:
+    update_id = update.get("update_id")
+    if not isinstance(update_id, int):
+        return None
+    with write_session() as session:
+        telegram = session.get(TelegramSettings, 1)
+        if telegram is None or update_id <= telegram.last_update_id:
+            return None
+        telegram.last_update_id = update_id
+        callback = update.get("callback_query")
+        if not isinstance(callback, dict) or not isinstance(callback.get("data"), str):
+            return None
+        callback_id = str(callback.get("id") or "")
+        data = callback["data"].split(":")
+        if len(data) != 4 or data[0] != "lg" or data[1] not in {"approve", "reject"}:
+            return (callback_id, "Unknown LocalGrowth action.") if callback_id else None
+        _, decision, post_id, raw_revision = data
+        try:
+            revision = int(raw_revision)
+        except ValueError:
+            return (callback_id, "Invalid draft revision.") if callback_id else None
+
+        message = callback.get("message")
+        chat = message.get("chat") if isinstance(message, dict) else None
+        callback_chat = chat.get("id") if isinstance(chat, dict) else None
+        if telegram.chat_id.lstrip("-").isdigit() and str(callback_chat) != telegram.chat_id:
+            return (callback_id, "This chat is not authorized for LocalGrowth approvals.") if callback_id else None
+        post = session.get(Post, post_id)
+        if post is None:
+            answer = "Draft no longer exists."
+        elif post.revision != revision:
+            answer = "Stale approval: review the latest draft revision."
+        elif post.status != "pending":
+            answer = f"Draft is already {post.status}."
+        else:
+            approved = decision == "approve"
+            post.status = "approved" if approved else "rejected"
+            post.approved_at = utc_now() if approved else None
+            post.updated_at = utc_now()
+            post.last_error = None
+            answer = f"Revision {revision} approved and locked." if approved else f"Revision {revision} rejected."
+            _append_audit(
+                session,
+                action="post.approved.telegram" if approved else "post.rejected.telegram",
+                entity_type="post",
+                entity_id=post.id,
+                summary=f"Revision {revision} {'approved' if approved else 'rejected'} from Telegram.",
+            )
+        return (callback_id, answer) if callback_id else None
+
+
+def reserve_publish(post_id: str, revision: int) -> dict[str, Any]:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None:
+            raise AppError("Draft not found.", 404)
+        if post.revision != revision:
+            raise AppError("This draft changed. Review the latest revision before publishing.")
+        if post.status != "approved":
+            raise AppError("Approve this exact draft version before publishing.")
+        if post.channel != "telegram":
+            raise AppError(f"{post.channel} publisher is not installed yet. Telegram publishing is available now.")
+        post.status = "publishing"
+        post.updated_at = utc_now()
+        post.last_error = None
+        snapshot = _post_dict(post)
+        _append_audit(
+            session,
+            action="post.publish_reserved",
+            entity_type="publisher",
+            entity_id=post.id,
+            summary=f"Telegram publish reserved for revision {post.revision}.",
+        )
+        return snapshot
+
+
+def finish_publish(post_id: str, revision: int, remote_id: str) -> None:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None or post.revision != revision or post.status != "publishing":
+            raise AppError("Publish reservation no longer matches the current draft.")
+        post.status = "published"
+        post.published_at = utc_now()
+        post.updated_at = post.published_at
+        post.remote_id = remote_id
+        post.last_error = None
+        _cancel_pending_post_jobs(session, post.id, "Draft already published; redundant job cancelled.")
+        _append_audit(
+            session,
+            action="post.published",
+            entity_type="publisher",
+            entity_id=post.id,
+            summary=f"Revision {post.revision} published to Telegram as message {remote_id}.",
+        )
+
+
+def fail_publish(post_id: str, revision: int, message: str) -> None:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None or post.revision != revision or post.status != "publishing":
+            return
+        post.status = "approved"
+        post.last_error = message[:2_000]
+        post.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="post.publish_failed",
+            entity_type="publisher",
+            entity_id=post.id,
+            summary=f"Telegram publish failed for revision {post.revision}.",
+        )
+
+
+def fail_publish_uncertain(post_id: str, revision: int, message: str) -> None:
+    with write_session() as session:
+        post = session.get(Post, post_id)
+        if post is None or post.revision != revision or post.status != "publishing":
+            return
+        post.status = "failed"
+        post.last_error = message[:2_000]
+        post.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="post.publish_uncertain",
+            entity_type="publisher",
+            entity_id=post.id,
+            summary="Scheduled Telegram delivery failed after reservation; automatic retry was blocked to prevent duplicates.",
+        )
+
+
+def _cancel_pending_post_jobs(session: Session, post_id: str, summary: str) -> None:
+    jobs = list(
+        session.scalars(
+            select(LocalJob).where(
+                LocalJob.kind == "post.publish",
+                LocalJob.status.in_({"queued", "retrying"}),
+            )
+        ).all()
+    )
+    now = utc_now()
+    for job in jobs:
+        if str((job.payload or {}).get("post_id")) != post_id:
+            continue
+        job.status = "cancelled"
+        job.completed_at = now
+        job.updated_at = now
+        job.last_error = summary
+
+
+def scheduler_paused() -> bool:
+    with read_session() as session:
+        metadata = session.get(AppMetadata, "scheduler_paused")
+        return metadata is not None and metadata.value == "true"
+
+
+def set_scheduler_paused(paused: bool) -> None:
+    with write_session() as session:
+        metadata = session.get(AppMetadata, "scheduler_paused")
+        if metadata is None:
+            session.add(AppMetadata(key="scheduler_paused", value="true" if paused else "false"))
+        else:
+            metadata.value = "true" if paused else "false"
+        _append_audit(
+            session,
+            action="scheduler.paused" if paused else "scheduler.resumed",
+            entity_type="scheduler",
+            entity_id="local",
+            summary="Local scheduler paused." if paused else "Local scheduler resumed.",
+        )
+
+
+def schedule_post(post_id: str, payload: SchedulePostRequest, catch_up_hours: int) -> tuple[dict[str, Any], bool]:
+    now = datetime.now(UTC)
+    if payload.run_at < now - timedelta(hours=catch_up_hours):
+        raise AppError(f"Scheduled time is outside the {catch_up_hours}-hour catch-up window.")
+    if payload.run_at > now + timedelta(days=366):
+        raise AppError("Scheduled time must be within the next year.")
+    key = f"post.publish:{post_id}:{payload.revision}"
+    with write_session() as session:
+        existing = session.scalar(select(LocalJob).where(LocalJob.idempotency_key == key))
+        if existing is not None:
+            return _job_dict(existing), False
+        post = session.get(Post, post_id)
+        if post is None:
+            raise AppError("Draft not found.", 404)
+        if post.revision != payload.revision:
+            raise AppError("This draft changed. Review the latest revision before scheduling.")
+        if post.status != "approved":
+            raise AppError("Approve this exact draft version before scheduling.")
+        if post.channel != "telegram":
+            raise AppError(f"{post.channel} scheduler is not installed yet. Telegram scheduling is available now.")
+        created_at = utc_now()
+        job = LocalJob(
+            id=str(uuid4()),
+            idempotency_key=key,
+            kind="post.publish",
+            status="queued",
+            payload={"post_id": post.id, "revision": post.revision, "channel": post.channel},
+            run_at=_utc_iso(payload.run_at),
+            attempts=0,
+            max_attempts=3,
+            locked_at=None,
+            completed_at=None,
+            last_error=None,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        session.add(job)
+        _append_audit(
+            session,
+            action="job.scheduled",
+            entity_type="scheduler",
+            entity_id=job.id,
+            summary=f"Telegram publish scheduled for revision {post.revision} at {job.run_at}.",
+        )
+        session.flush()
+        return _job_dict(job), True
+
+
+def cancel_job(job_id: str) -> dict[str, Any]:
+    with write_session() as session:
+        job = session.get(LocalJob, job_id)
+        if job is None:
+            raise AppError("Scheduled job not found.", 404)
+        if job.status not in {"queued", "retrying"}:
+            raise AppError(f"Only queued jobs can be cancelled. Current status: {job.status}.")
+        now = utc_now()
+        job.status = "cancelled"
+        job.completed_at = now
+        job.updated_at = now
+        job.last_error = "Cancelled by the local operator."
+        _append_audit(
+            session,
+            action="job.cancelled",
+            entity_type="scheduler",
+            entity_id=job.id,
+            summary="Scheduled publish cancelled by the local operator.",
+        )
+        return _job_dict(job)
+
+
+def retry_job(job_id: str) -> dict[str, Any]:
+    with write_session() as session:
+        job = session.get(LocalJob, job_id)
+        if job is None:
+            raise AppError("Scheduled job not found.", 404)
+        if job.status not in {"failed", "missed"}:
+            raise AppError(f"Only failed or missed jobs can be retried. Current status: {job.status}.")
+        post_id = str((job.payload or {}).get("post_id") or "")
+        revision = int((job.payload or {}).get("revision") or 0)
+        post = session.get(Post, post_id)
+        if post is None or post.revision != revision:
+            raise AppError("The scheduled draft no longer matches this job.")
+        if post.status == "published":
+            raise AppError("This draft is already published; retry was blocked.")
+        if post.status not in {"approved", "failed"}:
+            raise AppError(f"Draft must be approved before retrying. Current status: {post.status}.")
+        if post.status == "failed":
+            post.status = "approved"
+            post.last_error = None
+            post.updated_at = utc_now()
+        now = utc_now()
+        job.status = "queued"
+        job.run_at = now
+        job.attempts = 0
+        job.locked_at = None
+        job.completed_at = None
+        job.last_error = None
+        job.updated_at = now
+        _append_audit(
+            session,
+            action="job.retried",
+            entity_type="scheduler",
+            entity_id=job.id,
+            summary="Failed scheduled publish explicitly requeued by the local operator.",
+        )
+        return _job_dict(job)
+
+
+def expire_missed_jobs(catch_up_hours: int) -> int:
+    cutoff = _utc_iso(datetime.now(UTC) - timedelta(hours=catch_up_hours))
+    with write_session() as session:
+        jobs = list(
+            session.scalars(
+                select(LocalJob).where(
+                    LocalJob.status.in_({"queued", "retrying"}),
+                    LocalJob.run_at < cutoff,
+                )
+            ).all()
+        )
+        now = utc_now()
+        for job in jobs:
+            job.status = "missed"
+            job.completed_at = now
+            job.updated_at = now
+            job.last_error = f"Missed the {catch_up_hours}-hour catch-up window."
+            _append_audit(
+                session,
+                action="job.missed",
+                entity_type="scheduler",
+                entity_id=job.id,
+                summary=job.last_error,
+            )
+        return len(jobs)
+
+
+def recover_stale_jobs(stale_minutes: int) -> int:
+    cutoff = _utc_iso(datetime.now(UTC) - timedelta(minutes=stale_minutes))
+    with write_session() as session:
+        jobs = list(
+            session.scalars(
+                select(LocalJob).where(LocalJob.status == "running", LocalJob.locked_at < cutoff)
+            ).all()
+        )
+        now = utc_now()
+        for job in jobs:
+            post_id = str((job.payload or {}).get("post_id") or "")
+            post = session.get(Post, post_id)
+            if job.kind == "post.publish" and post is not None and post.status == "publishing":
+                job.status = "failed"
+                job.completed_at = now
+                job.last_error = "Delivery state is uncertain after an interrupted publish; review before retrying."
+                post.status = "failed"
+                post.last_error = job.last_error
+                post.updated_at = now
+            elif job.attempts < job.max_attempts:
+                job.status = "queued"
+                job.run_at = now
+                job.last_error = "Recovered after an interrupted local worker."
+            else:
+                job.status = "failed"
+                job.completed_at = now
+                job.last_error = "The local worker stopped before this job could finish."
+            job.locked_at = None
+            job.updated_at = now
+            _append_audit(
+                session,
+                action="job.recovered" if job.status == "queued" else "job.failed",
+                entity_type="scheduler",
+                entity_id=job.id,
+                summary=job.last_error,
+            )
+        return len(jobs)
+
+
+def claim_due_job() -> dict[str, Any] | None:
+    with write_session() as session:
+        metadata = session.get(AppMetadata, "scheduler_paused")
+        if metadata is not None and metadata.value == "true":
+            return None
+        job = session.scalar(
+            select(LocalJob)
+            .where(LocalJob.status.in_({"queued", "retrying"}), LocalJob.run_at <= utc_now())
+            .order_by(LocalJob.run_at.asc(), LocalJob.created_at.asc())
+            .limit(1)
+        )
+        if job is None:
+            return None
+        now = utc_now()
+        job.status = "running"
+        job.attempts += 1
+        job.locked_at = now
+        job.updated_at = now
+        job.last_error = None
+        session.flush()
+        return _job_dict(job)
+
+
+def complete_job(job_id: str) -> None:
+    with write_session() as session:
+        job = session.get(LocalJob, job_id)
+        if job is None or job.status != "running":
+            return
+        now = utc_now()
+        job.status = "completed"
+        job.completed_at = now
+        job.locked_at = None
+        job.updated_at = now
+        job.last_error = None
+        _append_audit(
+            session,
+            action="job.completed",
+            entity_type="scheduler",
+            entity_id=job.id,
+            summary="Scheduled Telegram publish completed.",
+        )
+
+
+def fail_job(job_id: str, message: str, *, retryable: bool) -> None:
+    with write_session() as session:
+        job = session.get(LocalJob, job_id)
+        if job is None or job.status != "running":
+            return
+        now = datetime.now(UTC)
+        if retryable and job.attempts < job.max_attempts:
+            delay_seconds = min(60, 5 * (2 ** max(job.attempts - 1, 0)))
+            job.status = "retrying"
+            job.run_at = _utc_iso(now + timedelta(seconds=delay_seconds))
+            action = "job.retry_scheduled"
+            summary = f"Job retry {job.attempts + 1}/{job.max_attempts} scheduled after a local preflight failure."
+        else:
+            job.status = "failed"
+            job.completed_at = _utc_iso(now)
+            action = "job.failed"
+            summary = "Scheduled publish failed and requires local review."
+        job.locked_at = None
+        job.updated_at = _utc_iso(now)
+        job.last_error = message[:2_000]
+        _append_audit(
+            session,
+            action=action,
+            entity_type="scheduler",
+            entity_id=job.id,
+            summary=summary,
+        )

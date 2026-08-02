@@ -2,7 +2,7 @@
 
 ## What it is
 
-LocalGrowth OS is a local-first growth operations console. A business defines its brand, goals, channels, policies, budget, and approval rules. Specialized AI agents then prepare work, but connector actions are executed only by deterministic workflows with explicit permissions.
+LocalGrowth OS is a downloadable, localhost-only growth operations console. A business defines its brand, goals, channels, policies, budget, and approval rules. Specialized AI agents then prepare work, but connector actions are executed only by deterministic local workflows with explicit permissions.
 
 It borrows the useful control-plane ideas from agent-management products—goals, roles, heartbeats, budgets, approvals, adapters, and auditability—while focusing on the daily work of marketing, lead research, and SEO.
 
@@ -10,7 +10,7 @@ It borrows the useful control-plane ideas from agent-management products—goals
 
 - Solo founders who need a repeatable content and lead workflow.
 - Small businesses that want local control of customer and brand data.
-- Agencies managing multiple isolated client workspaces.
+- Agencies managing isolated client workspaces on their own machines.
 - Developers who want an open adapter SDK instead of another closed automation SaaS.
 
 ## Product principles
@@ -20,7 +20,7 @@ It borrows the useful control-plane ideas from agent-management products—goals
 3. **Official actions.** Publishing uses documented platform APIs. Data collection respects source terms, robots directives, consent, and applicable law.
 4. **Agents propose; workflows execute.** LLM output is untrusted structured input. Deterministic code validates and performs actions.
 5. **Everything is attributable.** Runs record inputs, model/provider, cost, policy result, approver, connector response, and rollback data.
-6. **Useful without every integration.** CSV import/export, webhooks, and generic OpenAI-compatible endpoints keep the core vendor-neutral.
+6. **No hosted dependency.** SQLite, local listeners, CSV import/export, and generic OpenAI-compatible endpoints keep the core useful without a LocalGrowth cloud service.
 
 ## Core objects
 
@@ -74,8 +74,8 @@ It borrows the useful control-plane ideas from agent-management products—goals
 - Weekly/monthly calendar with recurrence and channel-specific variants.
 - Text, image brief, carousel outline, short-video script, blog, and newsletter drafts.
 - Duplicate/claim checks, UTM builder, hashtag suggestions, and asset library.
-- Approval from dashboard, Telegram, Slack, or WhatsApp; decisions are signed, expiring, and auditable.
-- Official publisher adapters for Meta, LinkedIn, X, Telegram channels, WordPress, and webhooks as access permits.
+- Approval from the dashboard, Telegram long polling, or Slack Socket Mode; WhatsApp can notify but interactive callbacks require Meta's public webhook infrastructure.
+- Official publisher adapters for Meta, LinkedIn, X, Telegram channels, and WordPress as access permits.
 
 ### Lead intelligence
 
@@ -94,12 +94,12 @@ It borrows the useful control-plane ideas from agent-management products—goals
 
 ### Operations and governance
 
-- Visual workflow recipes and event/schedule/webhook triggers.
+- Visual workflow recipes and local event/schedule/connector triggers.
 - Queue health, retries, dead-letter runs, idempotency keys, and rate limits.
 - Per-workspace/provider/agent budgets and stop switches.
-- Encrypted secret vault, scoped connector permissions, authenticated deployment mode, and audit export.
-- Multi-workspace agency view with strict data isolation.
-- Plugin SDK, webhooks, import/export, and optional MCP gateway.
+- Encrypted local secret vault, scoped connector permissions, and audit export.
+- Local multi-workspace agency view with strict data isolation.
+- Local plugin SDK, import/export, and optional loopback MCP gateway.
 
 ## Extra features worth adding
 
@@ -117,3 +117,4 @@ It borrows the useful control-plane ideas from agent-management products—goals
 - Fake engagement, mass unsolicited messaging, or autonomous claims without review.
 - Storing third-party source data beyond its license or platform policy.
 - Letting an LLM directly hold unrestricted credentials or execute arbitrary shell/browser actions.
+- Requiring a LocalGrowth-hosted account, remote database, or public deployment for core features.

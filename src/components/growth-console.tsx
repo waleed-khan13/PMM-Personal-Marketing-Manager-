@@ -18,6 +18,8 @@ import {
   Menu,
   MessageCircle,
   Pencil,
+  Pause,
+  Play,
   PlugZap,
   Plus,
   RefreshCw,
@@ -27,7 +29,7 @@ import {
   ShieldCheck,
   Sparkles,
   TerminalSquare,
-  Webhook,
+  RadioTower,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -81,6 +83,8 @@ import {
 import type {
   ContentChannel,
   GeneratedPost,
+  LocalJob,
+  LocalJobStatus,
   PostStatus,
   ProviderConnectionResult,
   ProviderKind,
@@ -88,7 +92,7 @@ import type {
 } from "@/lib/app-types";
 import { cn } from "@/lib/utils";
 
-type ViewId = "command" | "create" | "queue" | "integrations" | "activity";
+type ViewId = "command" | "create" | "queue" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
 
 type StateResponse = {
@@ -106,6 +110,7 @@ const navigation: NavItem[] = [
   { id: "command", label: "Command", icon: LayoutDashboard },
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
+  { id: "scheduler", label: "Scheduler", icon: Clock3 },
   { id: "integrations", label: "Integrations", icon: PlugZap },
   { id: "activity", label: "Activity", icon: Activity },
 ];
@@ -125,6 +130,11 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
     eyebrow: "Human in the loop",
     title: "Approval queue",
     description: "Review the exact content version before it can leave this machine.",
+  },
+  scheduler: {
+    eyebrow: "Durable local jobs",
+    title: "Scheduler",
+    description: "Restart-safe publishing with pause, catch-up, and duplicate protection.",
   },
   integrations: {
     eyebrow: "Bring your own stack",
@@ -158,6 +168,16 @@ const statusStyles: Record<PostStatus, string> = {
   failed: "border-red-500/25 bg-red-500/8 text-red-300",
 };
 
+const jobStatusStyles: Record<LocalJobStatus, string> = {
+  queued: "border-sky-500/25 bg-sky-500/8 text-sky-300",
+  retrying: "border-amber-500/25 bg-amber-500/8 text-amber-300",
+  running: "border-violet-500/25 bg-violet-500/8 text-violet-300",
+  completed: "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+  failed: "border-red-500/25 bg-red-500/8 text-red-300",
+  cancelled: "border-zinc-800 bg-zinc-950 text-zinc-500",
+  missed: "border-orange-500/25 bg-orange-500/8 text-orange-300",
+};
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -170,6 +190,12 @@ function formatCompactDate(value: string) {
     Math.round((new Date(value).getTime() - Date.now()) / 60_000),
     "minute",
   );
+}
+
+function defaultScheduleAt() {
+  const date = new Date(Date.now() + 60 * 60 * 1_000);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -460,6 +486,8 @@ export function GrowthConsole() {
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [editPost, setEditPost] = useState<GeneratedPost | null>(null);
   const [editForm, setEditForm] = useState({ title: "", body: "", hashtags: "" });
+  const [scheduleTarget, setScheduleTarget] = useState<GeneratedPost | null>(null);
+  const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
   const [providerVerified, setProviderVerified] = useState(false);
   const [telegramVerified, setTelegramVerified] = useState(false);
   const [providerModels, setProviderModels] = useState<string[]>([]);
@@ -477,7 +505,6 @@ export function GrowthConsole() {
     apiKey: string;
   }>({ kind: "ollama", baseUrl: "http://127.0.0.1:11434", model: "", apiKey: "" });
   const [telegramForm, setTelegramForm] = useState({ botToken: "", chatId: "" });
-  const [telegramPublicUrl, setTelegramPublicUrl] = useState("");
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
     channel: ContentChannel;
@@ -519,7 +546,6 @@ export function GrowthConsole() {
           apiKey: "",
         });
         setTelegramForm({ chatId: next.telegram.chatId, botToken: "" });
-        setTelegramPublicUrl(next.telegram.webhookUrl || "");
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -534,6 +560,21 @@ export function GrowthConsole() {
     };
   }, []);
 
+  const schedulerShouldRefresh = Boolean(
+    !appState?.scheduler.paused
+      && appState?.jobs.some((job) => ["queued", "retrying", "running"].includes(job.status)),
+  );
+
+  useEffect(() => {
+    if (!appState?.telegram.pollingEnabled && !schedulerShouldRefresh) return;
+    const interval = window.setInterval(() => {
+      void requestJson<PublicAppState>("/api/state", { cache: "no-store" })
+        .then(setAppState)
+        .catch(() => undefined);
+    }, 5_000);
+    return () => window.clearInterval(interval);
+  }, [appState?.telegram.pollingEnabled, schedulerShouldRefresh]);
+
   const counts = useMemo(() => {
     const posts = appState?.posts ?? [];
     return {
@@ -547,7 +588,7 @@ export function GrowthConsole() {
   const setup = useMemo(() => {
     const business = Boolean(appState?.workspace.businessName && appState.workspace.description);
     const provider = Boolean(appState?.provider.configured);
-    const telegram = Boolean(appState?.telegram.configured);
+    const telegram = Boolean(appState?.telegram.configured && appState.telegram.pollingEnabled);
     return { business, provider, telegram, complete: [business, provider, telegram].filter(Boolean).length };
   }, [appState]);
 
@@ -714,6 +755,77 @@ export function GrowthConsole() {
     }
   }
 
+  function openSchedule(post: GeneratedPost) {
+    setScheduleTarget(post);
+    setScheduleAt(defaultScheduleAt());
+  }
+
+  async function schedulePost(event: FormEvent) {
+    event.preventDefault();
+    if (!scheduleTarget) return;
+    const runAt = new Date(scheduleAt);
+    if (Number.isNaN(runAt.getTime())) {
+      toast.error("Choose a valid publish time.");
+      return;
+    }
+    setBusy(`schedule-${scheduleTarget.id}`);
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/posts/${scheduleTarget.id}/schedule`, {
+        method: "POST",
+        body: JSON.stringify({ revision: scheduleTarget.revision, runAt: runAt.toISOString() }),
+      });
+      setAppState(response.state);
+      setScheduleTarget(null);
+      toast.success(response.message, { description: formatDate(runAt.toISOString()) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not schedule this draft.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function configureScheduler(paused: boolean) {
+    setBusy("scheduler-state");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>("/api/scheduler", {
+        method: "PUT",
+        body: JSON.stringify({ paused }),
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update the local scheduler.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelScheduledJob(job: LocalJob) {
+    setBusy(`cancel-job-${job.id}`);
+    try {
+      const response = await requestJson<StateResponse>(`/api/jobs/${job.id}/cancel`, { method: "POST" });
+      setAppState(response.state);
+      toast.success("Scheduled publish cancelled");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not cancel this job.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function retryScheduledJob(job: LocalJob) {
+    setBusy(`retry-job-${job.id}`);
+    try {
+      const response = await requestJson<StateResponse>(`/api/jobs/${job.id}/retry`, { method: "POST" });
+      setAppState(response.state);
+      toast.success("Scheduled publish requeued", { description: "Review possible prior delivery before retrying." });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not retry this job.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function openEdit(post: GeneratedPost) {
     setEditPost(post);
     setEditForm({ title: post.title, body: post.body, hashtags: post.hashtags.join(" ") });
@@ -742,18 +854,17 @@ export function GrowthConsole() {
     }
   }
 
-  async function registerTelegramWebhook() {
-    setBusy("telegram-webhook");
+  async function configureTelegramPolling(enabled: boolean) {
+    setBusy("telegram-polling");
     try {
-      const response = await requestJson<StateResponse & { message: string }>("/api/integrations/telegram/webhook", {
-        method: "POST",
-        body: JSON.stringify({ publicUrl: telegramPublicUrl }),
+      const response = await requestJson<StateResponse & { message: string }>("/api/integrations/telegram/polling", {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
       });
       setAppState(response.state);
-      setTelegramPublicUrl(response.state.telegram.webhookUrl);
       toast.success(response.message);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Webhook registration failed.");
+      toast.error(error instanceof Error ? error.message : "Could not update local Telegram approvals.");
     } finally {
       setBusy(null);
     }
@@ -1045,7 +1156,13 @@ export function GrowthConsole() {
                 </Card>
               ) : (
                 <div className="grid gap-4 2xl:grid-cols-2">
-                  {filteredPosts.map((post) => (
+                  {filteredPosts.map((post) => {
+                    const scheduledJob = appState.jobs.find(
+                      (job) => job.payload.post_id === post.id
+                        && job.payload.revision === post.revision
+                        && ["queued", "retrying", "running"].includes(job.status),
+                    );
+                    return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
                         <div className="flex min-w-0 items-center gap-2">
@@ -1071,6 +1188,12 @@ export function GrowthConsole() {
                               <p className="mt-2 leading-5">{post.rationale}</p>
                             </details>
                           ) : null}
+                          {scheduledJob ? (
+                            <div className="mt-4 flex items-start gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 p-3 text-xs leading-5 text-sky-200">
+                              <Clock3 className="mt-0.5 size-3.5 shrink-0" />
+                              <div><p className="font-medium">Scheduled for {formatDate(scheduledJob.runAt)}</p><p className="text-sky-300/60">{scheduledJob.status} · attempt {scheduledJob.attempts}/{scheduledJob.maxAttempts}</p></div>
+                            </div>
+                          ) : null}
                           {post.lastError ? (
                             <div className="mt-4 flex gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-300">
                               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{post.lastError}
@@ -1091,7 +1214,10 @@ export function GrowthConsole() {
                               </>
                             ) : null}
                             {post.status === "approved" && post.channel === "telegram" ? (
-                              <Button disabled={busy === `publish-${post.id}`} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} Publish</Button>
+                              <>
+                                <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} Publish now</Button>
+                              </>
                             ) : null}
                             {post.status === "approved" && post.channel !== "telegram" ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
@@ -1106,7 +1232,74 @@ export function GrowthConsole() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {!loading && appState && activeView === "scheduler" ? (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="border-b border-zinc-900">
+                  <div className="flex items-center gap-3">
+                    <IntegrationIcon><Clock3 className="size-4" /></IntegrationIcon>
+                    <div><CardTitle>Local job worker</CardTitle><CardDescription>SQLite-backed queue that survives app and computer restarts.</CardDescription></div>
+                  </div>
+                  <CardAction>
+                    <Badge className={cn(appState.scheduler.paused ? "border-amber-500/25 bg-amber-500/8 text-amber-300" : "border-emerald-500/25 bg-emerald-500/8 text-emerald-300")} variant="outline">
+                      {appState.scheduler.paused ? "Paused" : appState.scheduler.active ? "Running" : "Enabled"}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="grid gap-1 text-xs text-zinc-500">
+                    <p>Overdue jobs run automatically inside a {appState.scheduler.catchUpHours}-hour catch-up window.</p>
+                    <p>Revision keys prevent duplicate local jobs. Ambiguous remote failures require an explicit retry.</p>
+                    {appState.scheduler.lastError ? <p className="text-red-400">{appState.scheduler.lastError}</p> : null}
+                  </div>
+                  <Button disabled={busy === "scheduler-state"} onClick={() => void configureScheduler(!appState.scheduler.paused)} variant={appState.scheduler.paused ? "default" : "outline"}>
+                    {busy === "scheduler-state" ? <Loader2 className="animate-spin" /> : appState.scheduler.paused ? <Play /> : <Pause />}
+                    {appState.scheduler.paused ? "Resume worker" : "Pause worker"}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {appState.jobs.length === 0 ? (
+                <Card>
+                  <EmptyState action={<Button onClick={() => navigate("queue")} variant="outline"><Inbox /> Open approval queue</Button>} description="Approve a Telegram draft, then choose Schedule." icon={Clock3} title="No local jobs yet" />
+                </Card>
+              ) : (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {appState.jobs.map((job) => {
+                    const post = appState.posts.find((item) => item.id === job.payload.post_id);
+                    return (
+                      <Card key={job.id}>
+                        <CardHeader className="border-b border-zinc-900">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge className={jobStatusStyles[job.status]} variant="outline">{job.status}</Badge>
+                              <Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">revision {job.payload.revision}</Badge>
+                            </div>
+                            <CardTitle className="mt-3 truncate">{post?.title ?? "Draft unavailable"}</CardTitle>
+                            <CardDescription>{job.kind} · {job.id.slice(0, 8)}</CardDescription>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-2 gap-3 rounded-md border border-zinc-900 bg-black p-3 text-xs">
+                            <div><p className="text-zinc-600">Run time</p><p className="mt-1 text-zinc-300">{formatDate(job.runAt)}</p><p className="mt-1 text-[10px] text-zinc-600">{formatCompactDate(job.runAt)}</p></div>
+                            <div><p className="text-zinc-600">Attempts</p><p className="mt-1 font-mono text-zinc-300">{job.attempts} / {job.maxAttempts}</p></div>
+                          </div>
+                          {job.lastError ? <div className="flex gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-300"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{job.lastError}</div> : null}
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {["queued", "retrying"].includes(job.status) ? <Button disabled={busy === `cancel-job-${job.id}`} onClick={() => void cancelScheduledJob(job)} size="sm" variant="outline">{busy === `cancel-job-${job.id}` ? <Loader2 className="animate-spin" /> : <X />} Cancel</Button> : null}
+                            {["failed", "missed"].includes(job.status) ? <Button disabled={busy === `retry-job-${job.id}`} onClick={() => void retryScheduledJob(job)} size="sm">{busy === `retry-job-${job.id}` ? <Loader2 className="animate-spin" /> : <RefreshCw />} Retry after review</Button> : null}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1185,11 +1378,17 @@ export function GrowthConsole() {
                       <Field htmlFor="chat-id" label="Approval chat ID" hint="User, group, or channel"><Input id="chat-id" maxLength={160} onChange={(event) => setTelegramForm((current) => ({ ...current, chatId: event.target.value }))} placeholder="-1001234567890" required value={telegramForm.chatId} /></Field>
                       <div className="space-y-3 rounded-md border border-zinc-800 bg-black p-3">
                         <div className="flex items-start gap-3">
-                          <Webhook className="mt-0.5 size-4 shrink-0 text-zinc-500" />
-                          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-medium text-zinc-300">Inline button approvals</p>{appState.telegram.webhookConfigured ? <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline">Connected</Badge> : null}</div><p className="mt-1 text-[11px] leading-4 text-zinc-600">Telegram needs a public HTTPS address. In-app approvals still work on localhost.</p></div>
+                          <RadioTower className={cn("mt-0.5 size-4 shrink-0", appState.telegram.pollingActive ? "text-emerald-400" : "text-zinc-500")} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-medium text-zinc-300">Local approval listener</p>
+                              {appState.telegram.pollingActive ? <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline">Listening</Badge> : appState.telegram.pollingEnabled ? <Badge className="border-amber-500/25 bg-amber-500/8 text-amber-300" variant="outline">{appState.telegram.pollingStatus}</Badge> : null}
+                            </div>
+                            <p className="mt-1 text-[11px] leading-4 text-zinc-600">Receives Telegram button decisions through outbound long polling. No domain, tunnel, or public webhook required.</p>
+                            {appState.telegram.lastError ? <p className="mt-2 text-[11px] leading-4 text-red-400">{appState.telegram.lastError}</p> : null}
+                          </div>
                         </div>
-                        <Field htmlFor="telegram-public-url" label="Public app URL" hint="HTTPS tunnel or domain"><Input id="telegram-public-url" onChange={(event) => setTelegramPublicUrl(event.target.value)} placeholder="https://growth.example.com" type="url" value={telegramPublicUrl} /></Field>
-                        <Button className="w-full" disabled={!appState.telegram.configured || !telegramPublicUrl || busy === "telegram-webhook"} onClick={() => void registerTelegramWebhook()} type="button" variant="outline">{busy === "telegram-webhook" ? <Loader2 className="animate-spin" /> : <Webhook />} {appState.telegram.webhookConfigured ? "Update secure webhook" : "Connect approval buttons"}</Button>
+                        <Button className="w-full" disabled={!appState.telegram.configured || busy === "telegram-polling"} onClick={() => void configureTelegramPolling(!appState.telegram.pollingEnabled)} type="button" variant="outline">{busy === "telegram-polling" ? <Loader2 className="animate-spin" /> : <RadioTower />} {appState.telegram.pollingEnabled ? "Stop local approvals" : "Start local approvals"}</Button>
                       </div>
                       <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-900 pt-4">
                         <Button disabled={busy === "telegram-save"} type="submit" variant="outline">{busy === "telegram-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
@@ -1243,6 +1442,29 @@ export function GrowthConsole() {
           <DialogFooter className="border-zinc-800 bg-[#090909]">
             <Button onClick={() => setEditPost(null)} type="button" variant="ghost">Cancel</Button>
             <Button disabled={Boolean(editPost && busy === `edit-${editPost.id}`)} form="edit-draft-form" type="submit">{editPost && busy === `edit-${editPost.id}` ? <Loader2 className="animate-spin" /> : <Check />} Save new version</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => !open && setScheduleTarget(null)} open={Boolean(scheduleTarget)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Schedule approved draft</DialogTitle>
+            <DialogDescription>The durable local worker will publish this exact revision to Telegram.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" id="schedule-draft-form" onSubmit={schedulePost}>
+            <div className="rounded-md border border-zinc-900 bg-black p-3">
+              <p className="truncate text-sm font-medium text-zinc-200">{scheduleTarget?.title}</p>
+              <p className="mt-1 font-mono text-[10px] text-zinc-600">revision {scheduleTarget?.revision} · {scheduleTarget?.id.slice(0, 8)}</p>
+            </div>
+            <Field htmlFor="schedule-at" label="Publish time" hint="Your computer's local timezone">
+              <Input id="schedule-at" onChange={(event) => setScheduleAt(event.target.value)} required type="datetime-local" value={scheduleAt} />
+            </Field>
+            <div className="flex gap-2 rounded-md border border-sky-500/20 bg-sky-500/5 p-3 text-xs leading-5 text-sky-200"><ShieldCheck className="mt-0.5 size-4 shrink-0" />If the app was closed, an overdue job catches up after restart within the configured safety window.</div>
+          </form>
+          <DialogFooter className="border-zinc-800 bg-[#090909]">
+            <Button onClick={() => setScheduleTarget(null)} type="button" variant="ghost">Cancel</Button>
+            <Button disabled={Boolean(scheduleTarget && busy === `schedule-${scheduleTarget.id}`)} form="schedule-draft-form" type="submit">{scheduleTarget && busy === `schedule-${scheduleTarget.id}` ? <Loader2 className="animate-spin" /> : <Clock3 />} Schedule locally</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,20 +1,25 @@
 {
   "name": "localgrowth-os",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Self-hosted, approval-first AI growth automation for content, leads, and SEO.",
+  "description": "Open-source, localhost-only AI growth automation for content, leads, and SEO.",
   "license": "MIT",
   "packageManager": "pnpm@10.7.0",
   "engines": {
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev",
+    "dev:api": "uv run --project backend uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "build": "next build",
     "start": "node scripts/start.mjs",
+    "backend:sync": "uv sync --project backend",
+    "backend:test": "uv run --directory backend pytest",
+    "backend:lint": "uv run --directory backend ruff check .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm typecheck && pnpm lint && pnpm build"
+    "check": "pnpm typecheck && pnpm lint && pnpm backend:lint && pnpm backend:test && pnpm build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

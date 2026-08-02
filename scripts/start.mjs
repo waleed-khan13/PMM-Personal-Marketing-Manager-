@@ -5,6 +5,11 @@ import path from "node:path";
 const projectRoot = process.cwd();
 const standaloneRoot = path.join(projectRoot, ".next", "standalone");
 const standaloneNextRoot = path.join(standaloneRoot, ".next");
+const apiPort = process.env.LOCALGROWTH_API_PORT || "8000";
+const webPort = process.env.PORT || "3000";
+const dataDirectory = process.env.LOCALGROWTH_DATA_DIR || path.join(projectRoot, "data");
+const children = new Set();
+let stopping = false;
 
 async function exists(target) {
   try {
@@ -13,6 +18,43 @@ async function exists(target) {
   } catch {
     return false;
   }
+}
+
+function launch(command, args, extraEnv = {}) {
+  const child = spawn(command, args, {
+    cwd: projectRoot,
+    env: { ...process.env, ...extraEnv },
+    stdio: "inherit",
+    windowsHide: true,
+  });
+  children.add(child);
+  child.on("exit", (code) => {
+    children.delete(child);
+    if (!stopping) shutdown(code ?? 1);
+  });
+  return child;
+}
+
+function shutdown(code = 0) {
+  if (stopping) return;
+  stopping = true;
+  for (const child of children) child.kill();
+  setTimeout(() => process.exit(code), 50).unref();
+}
+
+async function waitForApi(url, child) {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error("The local FastAPI process exited before it became ready.");
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_500) });
+      if (response.ok) return;
+    } catch {
+      // The API is still starting or synchronizing its local Python environment.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("The local FastAPI service did not become ready within 90 seconds.");
 }
 
 if (!(await exists(path.join(standaloneRoot, "server.js")))) {
@@ -34,25 +76,29 @@ if (await exists(publicRoot)) {
   });
 }
 
-const hostname = process.env.LOCALGROWTH_HOST || "127.0.0.1";
-const dataDirectory = process.env.LOCALGROWTH_DATA_DIR || path.join(projectRoot, "data");
-const server = spawn(process.execPath, [path.join(standaloneRoot, "server.js")], {
-  env: {
-    ...process.env,
-    HOSTNAME: hostname,
-    LOCALGROWTH_DATA_DIR: dataDirectory,
-  },
-  stdio: "inherit",
-});
-
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => server.kill(signal));
+  process.on(signal, () => shutdown(0));
 }
 
-server.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-  } else {
-    process.exit(code ?? 1);
-  }
+const api = launch(
+  "uv",
+  ["run", "--project", "backend", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", apiPort],
+  {
+    LOCALGROWTH_API_HOST: "127.0.0.1",
+    LOCALGROWTH_API_PORT: apiPort,
+    LOCALGROWTH_DATA_DIR: dataDirectory,
+  },
+);
+
+try {
+  await waitForApi(`http://127.0.0.1:${apiPort}/api/health`, api);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "The local API failed to start.");
+  shutdown(1);
+}
+
+launch(process.execPath, [path.join(standaloneRoot, "server.js")], {
+  HOSTNAME: "127.0.0.1",
+  PORT: webPort,
+  LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
 });
