@@ -4,6 +4,8 @@ export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "p
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
 export type ConnectorCapability = "approval" | "notification" | "publish" | "leads" | "analytics" | "cms";
 export type ConnectorAvailability = "available" | "planned" | "access-gated" | "notification-only" | "built-in";
+export type LeadSource = "csv" | "linkedin-export" | "crm-export" | "manual";
+export type LeadStatus = "new" | "qualified" | "contacted" | "archived";
 
 export interface WorkspaceSettings {
   name: string;
@@ -58,7 +60,7 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead";
   entityId: string;
   summary: string;
   createdAt: string;
@@ -140,6 +142,67 @@ export interface PublicConnectorsState {
   accounts: ConnectorAccount[];
 }
 
+export interface LeadEvidence {
+  source: LeadSource;
+  sourceLabel: string;
+  sourceRef?: string;
+  importedAt: string;
+}
+
+export interface Lead {
+  id: string;
+  businessName: string;
+  website: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  source: LeadSource;
+  sourceLabel: string;
+  sourceRef: string | null;
+  notes: string;
+  evidence: LeadEvidence[];
+  status: LeadStatus;
+  suppressed: boolean;
+  suppressionReason: string | null;
+  suppressedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadSummary {
+  total: number;
+  active: number;
+  suppressed: number;
+  new: number;
+  qualified: number;
+  contacted: number;
+}
+
+export interface LeadListResponse {
+  items: Lead[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface LeadImportRow {
+  businessName: string;
+  website: string;
+  email: string;
+  phone: string;
+  location: string;
+  sourceRef: string;
+  notes: string;
+}
+
+export interface LeadImportResult {
+  processed: number;
+  created: number;
+  merged: number;
+  unchanged: number;
+  suppressed: number;
+}
+
 export interface PublicAppState {
   workspace: WorkspaceSettings;
   provider: PublicProviderSettings;
@@ -148,6 +211,7 @@ export interface PublicAppState {
   jobs: LocalJob[];
   scheduler: PublicSchedulerState;
   connectors: PublicConnectorsState;
+  leadSummary: LeadSummary;
   audit: AuditEvent[];
   runtime: {
     version: string;

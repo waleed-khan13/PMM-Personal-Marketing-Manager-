@@ -1,6 +1,6 @@
 # LocalGrowth OS
 
-LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.4.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
+LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.5.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
 
 ## What works today
 
@@ -17,9 +17,12 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Send revision-bound Slack approval buttons and receive approve/reject decisions through an outbound-only Socket Mode listener.
 - Save and verify a WordPress connector with encrypted Application Password credentials.
 - Publish or schedule an exact approved Blog revision through the official WordPress REST API and retain its remote post link.
+- Import allowed CSV, CRM, and LinkedIn exports into a durable local lead vault with source evidence.
+- Deduplicate leads by email, domain, phone, or business and location without silently overwriting existing values.
+- Search and qualify leads, preserve an audited suppression list, and block suppressed records from reactivation during import.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, and X; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.4 publishes and schedules only to Telegram and verified WordPress sites and never pretends an unavailable integration succeeded.
+Publishing adapters for LinkedIn, Instagram, Facebook, and X; official Google Places discovery; robots-aware website crawling; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.5 publishes and schedules only to Telegram and verified WordPress sites and never pretends an unavailable integration succeeded.
 
 ## Native localhost run
 
@@ -50,6 +53,8 @@ Complete the checklist in the dashboard:
 Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
 
 For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. LocalGrowth stores the returned WordPress post ID and link in local state and the audit trail.
+
+Open **Lead intelligence** to upload or paste CSV data. Recognized columns include `company`, `website`, `email`, `phone`, `location`, `source_url`, and common aliases. Choose `LinkedIn export` only for a file you exported or are authorized to use; LocalGrowth does not scrape LinkedIn pages. Duplicate rows merge into one local record while retaining their source evidence. Suppressing a lead preserves its identity so later imports cannot silently reactivate it.
 
 For a production-mode native run:
 
@@ -110,7 +115,7 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, lead vault, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
 - `backend/tests` — local API, connector-vault redaction, encryption, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.

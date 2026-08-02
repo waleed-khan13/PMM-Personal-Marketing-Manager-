@@ -67,6 +67,12 @@ The connector action never consumes free-form model output directly. Every paylo
 
 The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram or WordPress delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly review it before another attempt.
 
+## Local lead vault
+
+Lead imports enter FastAPI as validated structured rows after the browser parses an operator-selected CSV locally. The SQLite `leads` table stores the current business/contact record, pipeline state, source evidence, and suppression state. A separate `lead_identities` table holds unique normalized email, domain, phone, and business-plus-location keys so duplicates can merge without replacing existing values.
+
+Suppression is durable state, not deletion. A suppressed lead retains its identities and cannot be reactivated by a later CSV, CRM, or LinkedIn-export import; only an explicit local restore action can make it active again. Every import, status change, suppression, and restore operation appends an audit event. The global state contains only summary counts, while paginated lead records load from the dedicated lead endpoint so normal dashboard polling does not copy the entire vault.
+
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.

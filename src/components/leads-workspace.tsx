@@ -1,0 +1,428 @@
+"use client";
+
+import {
+  Building2,
+  ExternalLink,
+  FileSpreadsheet,
+  Globe2,
+  Loader2,
+  Mail,
+  MapPin,
+  Phone,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Upload,
+  UserRoundCheck,
+  UsersRound,
+} from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { requestJson } from "@/lib/api";
+import type {
+  Lead,
+  LeadImportResult,
+  LeadListResponse,
+  LeadSource,
+  LeadStatus,
+  PublicAppState,
+} from "@/lib/app-types";
+import { parseLeadCsv } from "@/lib/csv";
+import { cn } from "@/lib/utils";
+
+type LeadFilter = "active" | LeadStatus | "suppressed";
+
+const filters: Array<{ value: LeadFilter; label: string }> = [
+  { value: "active", label: "All active" },
+  { value: "new", label: "New" },
+  { value: "qualified", label: "Qualified" },
+  { value: "contacted", label: "Contacted" },
+  { value: "archived", label: "Archived" },
+  { value: "suppressed", label: "Suppression list" },
+];
+
+const sourceLabels: Record<LeadSource, string> = {
+  csv: "Generic CSV",
+  "linkedin-export": "LinkedIn export",
+  "crm-export": "CRM export",
+  manual: "Manual CSV",
+};
+
+const statusStyles: Record<LeadStatus, string> = {
+  new: "border-zinc-700 bg-zinc-900 text-zinc-300",
+  qualified: "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+  contacted: "border-sky-500/25 bg-sky-500/8 text-sky-300",
+  archived: "border-zinc-800 bg-black text-zinc-500",
+};
+
+function safeHttpUrl(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function LeadStatusBadge({ lead }: { lead: Lead }) {
+  if (lead.suppressed) {
+    return <Badge className="border-red-500/25 bg-red-500/8 text-red-300" variant="outline">Suppressed</Badge>;
+  }
+  return <Badge className={cn("capitalize", statusStyles[lead.status])} variant="outline">{lead.status}</Badge>;
+}
+
+function SummaryCard({ icon: Icon, label, value, detail }: { icon: typeof UsersRound; label: string; value: number; detail: string }) {
+  return (
+    <Card className="min-h-0 justify-between gap-3 py-4" size="sm">
+      <CardHeader className="flex-row items-center justify-between px-4 pb-0">
+        <p className="text-xs font-medium text-zinc-500">{label}</p>
+        <div className="grid size-8 place-items-center rounded-md border border-zinc-800 bg-black text-zinc-500"><Icon className="size-3.5" /></div>
+      </CardHeader>
+      <CardContent className="px-4">
+        <p className="text-2xl font-semibold tracking-[-0.04em] text-zinc-50 tabular-nums">{value}</p>
+        <p className="mt-1 text-[11px] text-zinc-600">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeadContact({ lead }: { lead: Lead }) {
+  const website = safeHttpUrl(lead.website);
+  return (
+    <div className="space-y-1.5 text-[11px] text-zinc-500">
+      {lead.email ? <a className="flex items-center gap-2 hover:text-zinc-200" href={`mailto:${lead.email}`}><Mail className="size-3" />{lead.email}</a> : null}
+      {lead.phone ? <a className="flex items-center gap-2 hover:text-zinc-200" href={`tel:${lead.phone}`}><Phone className="size-3" />{lead.phone}</a> : null}
+      {website ? <a className="flex items-center gap-2 hover:text-zinc-200" href={website} rel="noreferrer" target="_blank"><Globe2 className="size-3" />{lead.website}<ExternalLink className="size-2.5" /></a> : null}
+      {!lead.email && !lead.phone && !website ? <span className="text-zinc-700">No contact fields</span> : null}
+    </div>
+  );
+}
+
+export function LeadsWorkspace({
+  state,
+  onStateChange,
+}: {
+  state: PublicAppState;
+  onStateChange: (state: PublicAppState) => void;
+}) {
+  const [list, setList] = useState<LeadListResponse>({ items: [], total: 0, limit: 200, offset: 0 });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState<LeadFilter>("active");
+  const [query, setQuery] = useState("");
+  const [csvText, setCsvText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [source, setSource] = useState<LeadSource>("csv");
+  const [suppressionTarget, setSuppressionTarget] = useState<Lead | null>(null);
+  const [suppressionReason, setSuppressionReason] = useState("");
+  const preview = useMemo(() => parseLeadCsv(csvText), [csvText]);
+
+  const loadLeads = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ status: filter, limit: "200", offset: "0" });
+      if (query.trim()) params.set("query", query.trim());
+      setList(await requestJson<LeadListResponse>(`/api/leads?${params.toString()}`, { cache: "no-store" }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load the local lead vault.");
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, query]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadLeads(), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadLeads]);
+
+  async function chooseFile(file: File | undefined) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("CSV must be smaller than 2 MB.");
+      return;
+    }
+    setFileName(file.name);
+    setCsvText(await file.text());
+  }
+
+  async function importRows(event: FormEvent) {
+    event.preventDefault();
+    if (preview.rows.length === 0) return;
+    setBusy("import");
+    try {
+      const response = await requestJson<{ ok: boolean; result: LeadImportResult; state: PublicAppState }>("/api/leads/import", {
+        method: "POST",
+        body: JSON.stringify({ source, rows: preview.rows }),
+      });
+      onStateChange(response.state);
+      setCsvText("");
+      setFileName("");
+      setFilter("active");
+      await loadLeads();
+      toast.success(`${response.result.created} leads added`, {
+        description: `${response.result.merged} merged · ${response.result.suppressed} blocked by suppression`,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Lead import failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeStatus(lead: Lead, status: LeadStatus) {
+    setBusy(`status-${lead.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; lead: Lead; state: PublicAppState }>(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      onStateChange(response.state);
+      await loadLeads();
+      toast.success(`Lead moved to ${status}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update the lead.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function suppress(event: FormEvent) {
+    event.preventDefault();
+    if (!suppressionTarget) return;
+    setBusy(`suppress-${suppressionTarget.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; lead: Lead; state: PublicAppState }>(`/api/leads/${suppressionTarget.id}/suppress`, {
+        method: "POST",
+        body: JSON.stringify({ reason: suppressionReason }),
+      });
+      onStateChange(response.state);
+      setSuppressionTarget(null);
+      setSuppressionReason("");
+      await loadLeads();
+      toast.success("Lead added to the suppression list");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not suppress the lead.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function restore(lead: Lead) {
+    setBusy(`restore-${lead.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; lead: Lead; state: PublicAppState }>(`/api/leads/${lead.id}/restore`, { method: "POST" });
+      onStateChange(response.state);
+      await loadLeads();
+      toast.success("Lead restored to the active vault");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restore the lead.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <SummaryCard detail="Stored on this computer" icon={UsersRound} label="Total leads" value={state.leadSummary.total} />
+        <SummaryCard detail="Ready for qualification" icon={Building2} label="Active" value={state.leadSummary.active} />
+        <SummaryCard detail="Marked as a fit" icon={UserRoundCheck} label="Qualified" value={state.leadSummary.qualified} />
+        <SummaryCard detail="Never reactivated by import" icon={ShieldCheck} label="Suppressed" value={state.leadSummary.suppressed} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(500px,1.15fr)]">
+        <Card>
+          <CardHeader className="border-b border-zinc-900">
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-md border border-zinc-700 bg-black text-zinc-200"><FileSpreadsheet className="size-4" /></div>
+              <div>
+                <CardTitle>Import lead evidence</CardTitle>
+                <CardDescription>CSV, CRM, or an export you are allowed to use.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={importRows}>
+              <div className="space-y-2">
+                <Label className="text-xs text-zinc-300" htmlFor="lead-source">Data source</Label>
+                <Select onValueChange={(value) => value && setSource(value as LeadSource)} value={source}>
+                  <SelectTrigger className="h-10 w-full rounded-md border-input bg-[#080808]" id="lead-source"><SelectValue>{sourceLabels[source]}</SelectValue></SelectTrigger>
+                  <SelectContent className="border border-zinc-700 bg-[#0c0c0c]">
+                    {(Object.entries(sourceLabels) as Array<[LeadSource, string]>).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-md border border-dashed border-zinc-700 bg-black p-4 text-center">
+                <input accept=".csv,text/csv" className="sr-only" id="lead-csv-file" onChange={(event) => void chooseFile(event.target.files?.[0])} type="file" />
+                <Upload className="mx-auto size-5 text-zinc-500" />
+                <p className="mt-2 text-xs font-medium text-zinc-300">{fileName || "Choose a CSV file"}</p>
+                <p className="mt-1 text-[11px] text-zinc-600">Up to 1,000 rows · 2 MB · processed locally</p>
+                <label className={cn(buttonVariants({ size: "sm", variant: "outline" }), "mt-3")} htmlFor="lead-csv-file">Browse file</label>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-xs text-zinc-300" htmlFor="lead-csv-text">Or paste CSV</Label>
+                  <span className="text-[10px] text-zinc-600">company, website, email, phone, location</span>
+                </div>
+                <Textarea
+                  className="min-h-32 font-mono text-[11px]"
+                  id="lead-csv-text"
+                  onChange={(event) => { setCsvText(event.target.value); setFileName(""); }}
+                  placeholder={'company,website,email,phone,location\nAcme Studio,acme.example,hello@acme.example,,Karachi'}
+                  value={csvText}
+                />
+              </div>
+
+              {csvText ? (
+                <div className="rounded-md border border-zinc-800 bg-black p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium text-zinc-300">Import preview</p>
+                    <Badge className="border-zinc-700 bg-zinc-900 text-zinc-300" variant="outline">{preview.rows.length} valid</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {preview.recognizedFields.map((field) => <Badge className="text-zinc-500" key={field} variant="outline">{field}</Badge>)}
+                  </div>
+                  {preview.errors.length > 0 ? <p className="mt-3 text-[11px] leading-4 text-amber-300">{preview.errors[0]}{preview.errors.length > 1 ? ` +${preview.errors.length - 1} more` : ""}</p> : null}
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-4 border-t border-zinc-900 pt-4">
+                <p className="max-w-xs text-[10px] leading-4 text-zinc-600">Duplicates merge by email, domain, phone, or business + location. Existing values are never silently overwritten.</p>
+                <Button disabled={preview.rows.length === 0 || busy === "import"} type="submit">
+                  {busy === "import" ? <Loader2 className="animate-spin" /> : <Upload />}
+                  {busy === "import" ? "Importing…" : "Import leads"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="border-b border-zinc-900">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle>Local lead vault</CardTitle>
+                  <CardDescription>{list.total} {list.total === 1 ? "record" : "records"} in this view.</CardDescription>
+                </div>
+                <Button aria-label="Refresh leads" disabled={loading} onClick={() => void loadLeads()} size="icon-sm" variant="ghost"><RefreshCw className={cn(loading && "animate-spin")} /></Button>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_170px]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-zinc-600" />
+                  <Input className="pl-9" maxLength={200} onChange={(event) => setQuery(event.target.value)} placeholder="Search company, email, domain…" value={query} />
+                </div>
+                <Select onValueChange={(value) => value && setFilter(value as LeadFilter)} value={filter}>
+                  <SelectTrigger className="h-9 w-full rounded-md border-input bg-[#080808]"><SelectValue>{filters.find((item) => item.value === filter)?.label}</SelectValue></SelectTrigger>
+                  <SelectContent className="border border-zinc-700 bg-[#0c0c0c]">{filters.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loading && list.items.length === 0 ? (
+                <div className="grid min-h-72 place-items-center text-zinc-600"><Loader2 className="size-5 animate-spin" /></div>
+              ) : list.items.length === 0 ? (
+                <div className="grid min-h-72 place-items-center px-6 text-center">
+                  <div><UsersRound className="mx-auto size-5 text-zinc-600" /><p className="mt-3 text-sm font-medium text-zinc-300">No matching leads</p><p className="mt-1 text-xs text-zinc-600">Import an allowed export or change the current filter.</p></div>
+                </div>
+              ) : (
+                <>
+                  <div className="hidden md:block">
+                    <Table>
+                      <TableHeader><TableRow className="border-zinc-900 hover:bg-transparent"><TableHead className="px-5 text-[10px] tracking-wider text-zinc-600 uppercase">Lead</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Contact</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Evidence</TableHead><TableHead className="pr-5 text-right text-[10px] tracking-wider text-zinc-600 uppercase">Control</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {list.items.map((lead) => (
+                          <TableRow className="border-zinc-900 hover:bg-zinc-950" key={lead.id}>
+                            <TableCell className="max-w-56 px-5 py-4 whitespace-normal">
+                              <p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>
+                              {lead.location ? <p className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-zinc-600"><MapPin className="size-3" />{lead.location}</p> : null}
+                              <div className="mt-2"><LeadStatusBadge lead={lead} /></div>
+                            </TableCell>
+                            <TableCell className="max-w-64 whitespace-normal"><LeadContact lead={lead} /></TableCell>
+                            <TableCell>
+                              <Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">{lead.sourceLabel}</Badge>
+                              <p className="mt-1.5 text-[10px] text-zinc-700">{lead.evidence.length} source record{lead.evidence.length === 1 ? "" : "s"}</p>
+                            </TableCell>
+                            <TableCell className="pr-5 text-right">
+                              {lead.suppressed ? (
+                                <Button disabled={busy === `restore-${lead.id}`} onClick={() => void restore(lead)} size="sm" variant="outline">{busy === `restore-${lead.id}` ? <Loader2 className="animate-spin" /> : <RefreshCw />}Restore</Button>
+                              ) : (
+                                <div className="inline-flex items-center gap-2">
+                                  <Select disabled={busy === `status-${lead.id}`} onValueChange={(value) => value && void changeStatus(lead, value as LeadStatus)} value={lead.status}>
+                                    <SelectTrigger className="h-7 w-28 rounded-md border-zinc-800 bg-black text-[11px]"><SelectValue>{lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}</SelectValue></SelectTrigger>
+                                    <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="new">New</SelectItem><SelectItem value="qualified">Qualified</SelectItem><SelectItem value="contacted">Contacted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent>
+                                  </Select>
+                                  <Button aria-label={`Suppress ${lead.businessName || "lead"}`} onClick={() => setSuppressionTarget(lead)} size="icon-sm" variant="ghost"><ShieldAlert /></Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="divide-y divide-zinc-900 md:hidden">
+                    {list.items.map((lead) => (
+                      <div className="space-y-3 p-4" key={lead.id}>
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>{lead.location ? <p className="mt-1 text-[11px] text-zinc-600">{lead.location}</p> : null}</div><LeadStatusBadge lead={lead} /></div>
+                        <LeadContact lead={lead} />
+                        <div className="flex items-center justify-between gap-3"><Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">{lead.sourceLabel}</Badge><span className="text-[10px] text-zinc-700">{lead.evidence.length} source record{lead.evidence.length === 1 ? "" : "s"}</span></div>
+                        <div className="flex items-center justify-between gap-3 border-t border-zinc-900 pt-3">
+                          {lead.suppressed ? (
+                            <span className="text-[11px] text-zinc-600">Blocked from re-import activation</span>
+                          ) : (
+                            <Select disabled={busy === `status-${lead.id}`} onValueChange={(value) => value && void changeStatus(lead, value as LeadStatus)} value={lead.status}>
+                              <SelectTrigger className="h-7 w-28 rounded-md border-zinc-800 bg-black text-[11px]"><SelectValue>{lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}</SelectValue></SelectTrigger>
+                              <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="new">New</SelectItem><SelectItem value="qualified">Qualified</SelectItem><SelectItem value="contacted">Contacted</SelectItem><SelectItem value="archived">Archived</SelectItem></SelectContent>
+                            </Select>
+                          )}
+                          {lead.suppressed ? <Button onClick={() => void restore(lead)} size="sm" variant="outline"><RefreshCw />Restore</Button> : <Button onClick={() => setSuppressionTarget(lead)} size="sm" variant="ghost"><ShieldAlert />Suppress</Button>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex items-start gap-3 rounded-lg border border-zinc-900 bg-[#050505] p-4 text-xs leading-5 text-zinc-500">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-zinc-400" />
+            <p><span className="font-medium text-zinc-300">Permission-aware by design.</span> LinkedIn pages and Google Maps HTML are not scraped. LinkedIn exports can be imported here; official Google Places discovery and a robots-aware website crawler are the next adapters.</p>
+          </div>
+        </div>
+      </div>
+
+      <Dialog onOpenChange={(open) => { if (!open) { setSuppressionTarget(null); setSuppressionReason(""); } }} open={Boolean(suppressionTarget)}>
+        <DialogContent>
+          <form onSubmit={suppress}>
+            <DialogHeader><DialogTitle>Add to suppression list?</DialogTitle><DialogDescription>This record will stay blocked during future imports until you explicitly restore it.</DialogDescription></DialogHeader>
+            <div className="my-5 space-y-2"><Label htmlFor="suppression-reason">Reason</Label><Textarea id="suppression-reason" maxLength={500} onChange={(event) => setSuppressionReason(event.target.value)} placeholder="Example: Contact opted out" required value={suppressionReason} /></div>
+            <DialogFooter><Button onClick={() => setSuppressionTarget(null)} type="button" variant="outline">Cancel</Button><Button disabled={!suppressionReason.trim() || busy?.startsWith("suppress-")} type="submit" variant="destructive">{busy?.startsWith("suppress-") ? <Loader2 className="animate-spin" /> : <ShieldAlert />}Suppress lead</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

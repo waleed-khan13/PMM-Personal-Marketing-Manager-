@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -120,3 +120,36 @@ class LocalJob(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    business_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    website: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    source_ref: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="new", index=True)
+    suppressed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    suppression_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    suppressed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+
+
+class LeadIdentity(Base):
+    __tablename__ = "lead_identities"
+    __table_args__ = (UniqueConstraint("kind", "value", name="uq_lead_identity_kind_value"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lead_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    value: Mapped[str] = mapped_column(String(512), nullable=False)

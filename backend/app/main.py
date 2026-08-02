@@ -18,6 +18,14 @@ from app.connector_store import (
 )
 from app.connectors.service import send_saved_slack_approval, test_saved_connector
 from app.errors import AppError, ExternalServiceError
+from app.lead_store import (
+    import_leads,
+    lead_summary,
+    list_leads,
+    restore_lead,
+    suppress_lead,
+    update_lead_status,
+)
 from app.poller import TelegramPoller
 from app.scheduler import LocalScheduler
 from app.schemas import (
@@ -26,6 +34,9 @@ from app.schemas import (
     DecisionRequest,
     EditPostRequest,
     GeneratePostRequest,
+    LeadImportRequest,
+    LeadStatusUpdate,
+    LeadSuppressionUpdate,
     PollingUpdate,
     ProviderUpdate,
     PublishRequest,
@@ -117,6 +128,7 @@ async def validation_error_handler(_request: Request, error: RequestValidationEr
 def state_response() -> dict[str, Any]:
     state = public_state(telegram_poller.status(), local_scheduler.status())
     state["connectors"] = public_connector_state(slack_listener.statuses())
+    state["leadSummary"] = lead_summary()
     return state
 
 
@@ -134,6 +146,45 @@ def health() -> dict[str, Any]:
 @app.get("/api/state")
 def get_state() -> JSONResponse:
     return JSONResponse(state_response(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/leads")
+def get_leads(
+    query: str = "",
+    status: str = "active",
+    limit: int = 200,
+    offset: int = 0,
+) -> dict[str, object]:
+    allowed_statuses = {"active", "new", "qualified", "contacted", "archived", "suppressed"}
+    if status not in allowed_statuses:
+        raise AppError("Unknown lead status filter.")
+    if not 1 <= limit <= 500 or offset < 0:
+        raise AppError("Lead pagination values are invalid.")
+    return list_leads(query=query[:200], status=status, limit=limit, offset=offset)
+
+
+@app.post("/api/leads/import")
+def create_lead_import(payload: LeadImportRequest) -> dict[str, Any]:
+    result = import_leads(payload)
+    return {"ok": True, "result": result, "state": state_response()}
+
+
+@app.patch("/api/leads/{lead_id}")
+def change_lead_status(lead_id: str, payload: LeadStatusUpdate) -> dict[str, Any]:
+    lead = update_lead_status(lead_id, payload)
+    return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.post("/api/leads/{lead_id}/suppress")
+def create_lead_suppression(lead_id: str, payload: LeadSuppressionUpdate) -> dict[str, Any]:
+    lead = suppress_lead(lead_id, payload)
+    return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.post("/api/leads/{lead_id}/restore")
+def remove_lead_suppression(lead_id: str) -> dict[str, Any]:
+    lead = restore_lead(lead_id)
+    return {"ok": True, "lead": lead, "state": state_response()}
 
 
 @app.put("/api/settings/workspace")

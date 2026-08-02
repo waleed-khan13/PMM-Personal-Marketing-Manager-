@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -82,6 +82,35 @@ class SchedulePostRequest(ApiModel):
 
 class SchedulerUpdate(ApiModel):
     paused: bool
+
+
+class LeadImportRow(ApiModel):
+    business_name: str = Field(default="", max_length=200)
+    website: str = Field(default="", max_length=2_048)
+    email: str = Field(default="", max_length=320)
+    phone: str = Field(default="", max_length=80)
+    location: str = Field(default="", max_length=500)
+    source_ref: str = Field(default="", max_length=2_048)
+    notes: str = Field(default="", max_length=4_000)
+
+    @model_validator(mode="after")
+    def require_identity(self) -> Self:
+        if not any((self.business_name, self.website, self.email, self.phone)):
+            raise ValueError("Each lead needs a business name, website, email, or phone number.")
+        return self
+
+
+class LeadImportRequest(ApiModel):
+    source: Literal["csv", "linkedin-export", "crm-export", "manual"] = "csv"
+    rows: list[LeadImportRow] = Field(min_length=1, max_length=1_000)
+
+
+class LeadStatusUpdate(ApiModel):
+    status: Literal["new", "qualified", "contacted", "archived"]
+
+
+class LeadSuppressionUpdate(ApiModel):
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class ConnectorAccountUpsert(ApiModel):

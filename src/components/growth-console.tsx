@@ -30,12 +30,15 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
   TerminalSquare,
+  UsersRound,
   RadioTower,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+import { LeadsWorkspace } from "@/components/leads-workspace";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,13 +95,14 @@ import type {
   ProviderKind,
   PublicAppState,
 } from "@/lib/app-types";
+import { requestJson } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   WordPressConnectorCard,
   type WordPressConnectorForm,
 } from "@/components/wordpress-connector-card";
 
-type ViewId = "command" | "create" | "queue" | "scheduler" | "integrations" | "activity";
+type ViewId = "command" | "create" | "queue" | "leads" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
 
 type StateResponse = {
@@ -116,6 +120,7 @@ const navigation: NavItem[] = [
   { id: "command", label: "Command", icon: LayoutDashboard },
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
+  { id: "leads", label: "Lead intelligence", icon: UsersRound },
   { id: "scheduler", label: "Scheduler", icon: Clock3 },
   { id: "integrations", label: "Integrations", icon: PlugZap },
   { id: "activity", label: "Activity", icon: Activity },
@@ -136,6 +141,11 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
     eyebrow: "Human in the loop",
     title: "Approval queue",
     description: "Review the exact content version before it can leave this machine.",
+  },
+  leads: {
+    eyebrow: "Permission-aware intelligence",
+    title: "Lead intelligence",
+    description: "Import, deduplicate, qualify, and suppress business leads in your local database.",
   },
   scheduler: {
     eyebrow: "Durable local jobs",
@@ -202,26 +212,6 @@ function defaultScheduleAt() {
   const date = new Date(Date.now() + 60 * 60 * 1_000);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
-}
-
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!response.ok) {
-    const message = typeof payload.error === "string"
-      ? payload.error
-      : typeof payload.message === "string"
-        ? payload.message
-        : `Request failed (${response.status}).`;
-    throw new Error(message);
-  }
-  return payload as T;
 }
 
 function Brand() {
@@ -292,6 +282,9 @@ function SidebarContent({
                 <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-black">
                   {pending}
                 </span>
+              ) : null}
+              {item.id === "leads" && (state?.leadSummary.active ?? 0) > 0 ? (
+                <span className="ml-auto font-mono text-[10px] text-zinc-600">{state?.leadSummary.active}</span>
               ) : null}
             </button>
           );
@@ -1491,6 +1484,10 @@ export function GrowthConsole() {
                 </div>
               )}
             </div>
+          ) : null}
+
+          {!loading && appState && activeView === "leads" ? (
+            <LeadsWorkspace onStateChange={setAppState} state={appState} />
           ) : null}
 
           {!loading && appState && activeView === "scheduler" ? (

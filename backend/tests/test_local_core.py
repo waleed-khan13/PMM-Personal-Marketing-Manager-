@@ -50,6 +50,89 @@ def test_health_state_and_encrypted_settings(client) -> None:
     assert "do-not-store-in-plaintext" not in encrypted
 
 
+def test_lead_import_deduplicates_tracks_evidence_and_honors_suppression(client) -> None:
+    created = client.post(
+        "/api/leads/import",
+        json={
+            "source": "csv",
+            "rows": [
+                {
+                    "businessName": "Acme Studio",
+                    "website": "https://www.acme.example/about",
+                    "email": "HELLO@ACME.EXAMPLE",
+                    "location": "Karachi",
+                },
+                {
+                    "businessName": "Acme Studio",
+                    "website": "acme.example",
+                    "phone": "+92 300 1234567",
+                    "location": "Karachi",
+                },
+            ],
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["result"] == {
+        "processed": 2,
+        "created": 1,
+        "merged": 1,
+        "unchanged": 0,
+        "suppressed": 0,
+    }
+
+    merged = client.post(
+        "/api/leads/import",
+        json={
+            "source": "linkedin-export",
+            "rows": [
+                {
+                    "businessName": "Acme Studio",
+                    "website": "acme.example",
+                    "email": "hello@acme.example",
+                    "phone": "+92 300 1234567",
+                    "sourceRef": "https://www.linkedin.com/company/acme-studio",
+                }
+            ],
+        },
+    )
+    assert merged.status_code == 200
+    assert merged.json()["result"]["merged"] == 1
+
+    leads = client.get("/api/leads?query=acme")
+    assert leads.status_code == 200
+    assert leads.json()["total"] == 1
+    lead = leads.json()["items"][0]
+    assert lead["phone"] == "+92 300 1234567"
+    assert {item["source"] for item in lead["evidence"]} == {"csv", "linkedin-export"}
+
+    qualified = client.patch(f"/api/leads/{lead['id']}", json={"status": "qualified"})
+    assert qualified.status_code == 200
+    assert qualified.json()["lead"]["status"] == "qualified"
+
+    suppressed = client.post(
+        f"/api/leads/{lead['id']}/suppress",
+        json={"reason": "Contact opted out"},
+    )
+    assert suppressed.status_code == 200
+    assert suppressed.json()["state"]["leadSummary"]["suppressed"] == 1
+
+    blocked_reimport = client.post(
+        "/api/leads/import",
+        json={
+            "source": "crm-export",
+            "rows": [{"businessName": "Acme Studio", "email": "hello@acme.example"}],
+        },
+    )
+    assert blocked_reimport.status_code == 200
+    assert blocked_reimport.json()["result"]["suppressed"] == 1
+    assert blocked_reimport.json()["result"]["created"] == 0
+
+    restored = client.post(f"/api/leads/{lead['id']}/restore")
+    assert restored.status_code == 200
+    assert restored.json()["lead"]["suppressed"] is False
+    assert restored.json()["lead"]["status"] == "qualified"
+
+
 def test_draft_version_approval_and_single_publish(client, monkeypatch) -> None:
     from app.schemas import GeneratedContent
 
