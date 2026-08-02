@@ -11,7 +11,7 @@ LocalGrowth OS does not scrape LinkedIn pages or automate engagement through bro
 - User-owned CSV/CRM imports and manual records.
 - LinkedIn Lead Gen Forms or other documented APIs when access is granted.
 
-The v0.5 lead vault implements the user-owned export path. Each imported record keeps source evidence, deduplicates locally, and remains subject to the global suppression list; it does not fetch or automate LinkedIn pages.
+The v0.5+ lead vault implements the user-owned export path. Each imported record keeps source evidence, deduplicates locally, and remains subject to the global suppression list; it does not fetch or automate LinkedIn pages.
 
 References:
 
@@ -21,18 +21,24 @@ References:
 
 ## Google Maps and Places
 
-Business discovery should use the Places API or another licensed provider, not HTML scraping of Google Maps. The adapter must surface attribution, restrict caching/storage to what the applicable terms permit, and store source/evidence metadata. A durable `place_id` may be retained where policy permits; other fields receive source-specific expiry rules.
+Version 0.6 uses Places API (New) Text Search and never requests Google Maps HTML. It displays Google Maps and any returned provider attribution in the result container. Results are returned with `Cache-Control: no-store`, held only in active browser state, and not persisted to SQLite; the connector API key is encrypted locally. When an operator selects a result's website, the separate crawler collects only fields independently published by that website. The product terms and privacy notice link to the applicable Google terms and privacy policy.
 
-Reference: https://developers.google.com/maps/documentation/places/web-service/policies
+References:
+
+- https://developers.google.com/maps/documentation/places/web-service/text-search
+- https://developers.google.com/maps/documentation/places/web-service/policies
+- https://developers.google.com/maps/documentation/places/web-service/place-id
 
 ## Public websites
 
 - Respect robots directives and site terms.
-- Identify the crawler and provide an operator contact URL.
+- Identify the crawler with the LocalGrowth project URL; a configurable operator contact URL remains roadmap work.
 - Enforce per-host concurrency, delay, timeout, response-size, and allowed-content-type limits.
 - Do not log in, bypass paywalls/CAPTCHAs, evade blocks, or probe private networks.
 - Collect only fields needed for the configured business purpose and retain evidence/source URLs.
 - Provide suppression, correction, export, and deletion mechanisms.
+
+Version 0.6 implements identified sequential crawling, public-address validation, same-domain redirect enforcement, robots rules and crawl delay, strict time/size/content limits, contact-page selection, source URLs, and suppression. General lead export/deletion and a configurable operator contact URL remain roadmap work.
 
 ## Outreach
 

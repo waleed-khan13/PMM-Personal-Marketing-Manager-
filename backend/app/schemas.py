@@ -101,8 +101,17 @@ class LeadImportRow(ApiModel):
 
 
 class LeadImportRequest(ApiModel):
-    source: Literal["csv", "linkedin-export", "crm-export", "manual"] = "csv"
+    source: Literal["csv", "linkedin-export", "crm-export", "manual", "website-crawl"] = "csv"
     rows: list[LeadImportRow] = Field(min_length=1, max_length=1_000)
+
+
+class GooglePlacesSearchRequest(ApiModel):
+    query: str = Field(min_length=2, max_length=200)
+    page_size: int = Field(default=10, ge=1, le=20)
+
+
+class WebsiteCrawlRequest(ApiModel):
+    url: str = Field(min_length=4, max_length=2_048)
 
 
 class LeadStatusUpdate(ApiModel):

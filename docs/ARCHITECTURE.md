@@ -73,6 +73,10 @@ Lead imports enter FastAPI as validated structured rows after the browser parses
 
 Suppression is durable state, not deletion. A suppressed lead retains its identities and cannot be reactivated by a later CSV, CRM, or LinkedIn-export import; only an explicit local restore action can make it active again. Every import, status change, suppression, and restore operation appends an audit event. The global state contains only summary counts, while paginated lead records load from the dedicated lead endpoint so normal dashboard polling does not copy the entire vault.
 
+Google Places discovery uses the official Text Search (New) endpoint through an encrypted, scoped connector. The API applies an explicit field mask and returns `Cache-Control: no-store`; Places content exists only in the current browser state with Google Maps and provider attribution. LocalGrowth does not persist search results. When the operator selects a result's public website, a separate source-independent crawl may create lead evidence from that website; the Google result is not treated as stored lead data.
+
+The static website crawler resolves every request and redirect target before connecting and rejects non-public IP addresses, credentials, unsupported schemes, cross-domain redirects, oversized bodies, and non-HTML pages. It identifies itself, reads `robots.txt`, uses the declared crawl delay or a conservative default, serializes local crawl jobs, and visits at most four same-site homepage/contact/about pages. The extracted preview is no-store and reaches SQLite only after the operator explicitly imports it.
+
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.
@@ -80,6 +84,7 @@ Suppression is durable state, not deletion. A suppressed lead retains its identi
 - Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. Verified, enabled accounts run a supervised Socket Mode connection; every envelope is acknowledged before a configured-channel, revision-bound decision is applied.
 - WordPress uses the official REST API with an operator-created Application Password. Remote sites require HTTPS, credentials remain encrypted locally, and approved Blog revisions can publish immediately or through the durable scheduler.
 - Connectors that mandate a public inbound webhook, including interactive WhatsApp Cloud callbacks, are notification-only or optional in strict localhost mode.
+- Google Places uses official outbound Text Search requests; attributed results are transient and only public website-derived evidence may enter the lead vault.
 
 ## Adapter families
 

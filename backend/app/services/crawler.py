@@ -1,0 +1,373 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+import socket
+from html.parser import HTMLParser
+from ipaddress import ip_address
+from typing import Any
+from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.robotparser import RobotFileParser
+
+import httpx
+
+from app.errors import AppError, ExternalServiceError
+
+USER_AGENT_TOKEN = "LocalGrowthOS"
+USER_AGENT = (
+    "LocalGrowthOS/0.6 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
+)
+MAX_PAGE_BYTES = 1_000_000
+MAX_PAGES = 4
+CRAWL_LOCK = asyncio.Lock()
+CONTACT_HINTS = ("contact", "about", "team", "company", "reach", "connect")
+EMAIL_PATTERN = re.compile(
+    r"(?<![\w.+-])([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})(?![\w.-])",
+    re.IGNORECASE,
+)
+PHONE_PATTERN = re.compile(r"(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)")
+
+
+def _clean_text(value: str) -> str:
+    return " ".join(value.split()).strip()
+
+
+def _unique(values: list[str], limit: int = 10) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        clean = _clean_text(value)
+        key = clean.casefold()
+        if clean and key not in seen:
+            seen.add(key)
+            output.append(clean)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def _address_text(value: object) -> str:
+    if isinstance(value, str):
+        return _clean_text(value)
+    if not isinstance(value, dict):
+        return ""
+    keys = ("streetAddress", "addressLocality", "addressRegion", "postalCode", "addressCountry")
+    return ", ".join(_clean_text(str(value[key])) for key in keys if value.get(key))
+
+
+def _json_ld_objects(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        objects = [value]
+        graph = value.get("@graph")
+        if isinstance(graph, list):
+            objects.extend(item for item in graph if isinstance(item, dict))
+        return objects
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+class PageExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.title = ""
+        self.h1 = ""
+        self.description = ""
+        self.site_name = ""
+        self.links: list[str] = []
+        self.emails: list[str] = []
+        self.phones: list[str] = []
+        self.business_names: list[str] = []
+        self.locations: list[str] = []
+        self._capture: str | None = None
+        self._buffer: list[str] = []
+        self._json_ld = False
+        self._visible_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {key.casefold(): value or "" for key, value in attrs}
+        lowered = tag.casefold()
+        if lowered in {"title", "h1"}:
+            self._capture = lowered
+            self._buffer = []
+        elif lowered == "script" and attributes.get("type", "").casefold() == "application/ld+json":
+            self._json_ld = True
+            self._capture = "json-ld"
+            self._buffer = []
+        elif lowered == "meta":
+            name = (attributes.get("name") or attributes.get("property") or "").casefold()
+            content = _clean_text(attributes.get("content", ""))
+            if name in {"description", "og:description"} and content and not self.description:
+                self.description = content
+            if name == "og:site_name" and content:
+                self.site_name = content
+        elif lowered == "a":
+            href = attributes.get("href", "").strip()
+            if href:
+                self.links.append(href)
+                scheme = urlsplit(href).scheme.casefold()
+                if scheme == "mailto":
+                    self.emails.append(href.split(":", 1)[1].split("?", 1)[0])
+                elif scheme == "tel":
+                    self.phones.append(href.split(":", 1)[1].split("?", 1)[0])
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.casefold()
+        if self._capture == lowered:
+            value = _clean_text(" ".join(self._buffer))
+            if lowered == "title" and not self.title:
+                self.title = value
+            elif lowered == "h1" and not self.h1:
+                self.h1 = value
+            self._capture = None
+            self._buffer = []
+        elif lowered == "script" and self._json_ld:
+            raw = "".join(self._buffer).strip()
+            self._capture = None
+            self._buffer = []
+            self._json_ld = False
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                return
+            for item in _json_ld_objects(payload):
+                kind = item.get("@type")
+                kinds = {str(value) for value in kind} if isinstance(kind, list) else {str(kind)}
+                if kinds & {"Organization", "LocalBusiness", "ProfessionalService", "Corporation"}:
+                    if item.get("name"):
+                        self.business_names.append(str(item["name"]))
+                    if item.get("email"):
+                        self.emails.append(str(item["email"]).removeprefix("mailto:"))
+                    if item.get("telephone"):
+                        self.phones.append(str(item["telephone"]))
+                    address = _address_text(item.get("address"))
+                    if address:
+                        self.locations.append(address)
+
+    def handle_data(self, data: str) -> None:
+        if self._capture:
+            self._buffer.append(data)
+        elif _clean_text(data):
+            self._visible_text.append(data)
+
+    def result(self) -> dict[str, object]:
+        visible = _clean_text(" ".join(self._visible_text))[:200_000]
+        emails = self.emails + [match.group(1) for match in EMAIL_PATTERN.finditer(visible)]
+        phones = self.phones + [match.group(1) for match in PHONE_PATTERN.finditer(visible)]
+        return {
+            "title": self.title,
+            "h1": self.h1,
+            "description": self.description,
+            "siteName": self.site_name,
+            "links": self.links,
+            "emails": _unique(emails),
+            "phones": _unique(phones),
+            "businessNames": _unique(self.business_names),
+            "locations": _unique(self.locations),
+        }
+
+
+def _normalized_url(value: str) -> str:
+    raw = value.strip()
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError as error:
+        raise AppError("Website URL is invalid.") from error
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        raise AppError("Website URL must use http or https.")
+    if parsed.username or parsed.password:
+        raise AppError("Website URL must not contain credentials.")
+    hostname = parsed.hostname.casefold().rstrip(".")
+    netloc = hostname if port is None else f"{hostname}:{port}"
+    return urlunsplit((parsed.scheme.casefold(), netloc, parsed.path or "/", parsed.query, ""))
+
+
+async def validate_public_url(value: str) -> str:
+    url = _normalized_url(value)
+    hostname = urlsplit(url).hostname or ""
+    try:
+        records = await asyncio.to_thread(socket.getaddrinfo, hostname, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as error:
+        raise AppError("Website hostname could not be resolved.") from error
+    addresses = {record[4][0] for record in records}
+    if not addresses or any(not ip_address(address).is_global for address in addresses):
+        raise AppError("Website must resolve only to public internet addresses.")
+    return url
+
+
+async def _read_response(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    accepted_types: tuple[str, ...],
+    max_bytes: int,
+) -> tuple[str, int, str, bytes]:
+    current = url
+    for _redirect in range(4):
+        current = await validate_public_url(current)
+        try:
+            async with client.stream("GET", current, headers={"User-Agent": USER_AGENT}) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location", "")
+                    if not location:
+                        raise ExternalServiceError("Website returned an invalid redirect.")
+                    target = urljoin(current, location)
+                    if not _same_site(url, target):
+                        raise ExternalServiceError("Website redirected to a different domain; crawl stopped safely.")
+                    current = target
+                    continue
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].casefold()
+                if response.status_code >= 400:
+                    return current, response.status_code, content_type, b""
+                if content_type and not any(content_type.startswith(item) for item in accepted_types):
+                    raise ExternalServiceError(f"Website returned unsupported content type {content_type}.")
+                declared = int(response.headers.get("content-length", "0") or 0)
+                if declared > max_bytes:
+                    raise ExternalServiceError("Website page is larger than the crawler safety limit.")
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise ExternalServiceError("Website page is larger than the crawler safety limit.")
+                    chunks.append(chunk)
+                return current, response.status_code, content_type, b"".join(chunks)
+        except httpx.HTTPError as error:
+            raise ExternalServiceError(f"Website request failed ({type(error).__name__}).") from error
+    raise ExternalServiceError("Website redirected too many times.")
+
+
+async def _robots(client: httpx.AsyncClient, target_url: str) -> tuple[RobotFileParser, float]:
+    parsed = urlsplit(target_url)
+    robots_url = urlunsplit((parsed.scheme, parsed.netloc, "/robots.txt", "", ""))
+    final_url, status, _content_type, content = await _read_response(
+        client,
+        robots_url,
+        accepted_types=("text/plain", "text/html", "application/octet-stream"),
+        max_bytes=250_000,
+    )
+    parser = RobotFileParser()
+    parser.set_url(final_url)
+    if status in {401, 403}:
+        parser.parse(["User-agent: *", "Disallow: /"])
+    elif status >= 500:
+        raise ExternalServiceError("Website robots.txt is temporarily unavailable; crawl stopped safely.")
+    elif content:
+        parser.parse(content.decode("utf-8", errors="replace").splitlines())
+    else:
+        parser.parse([])
+    delay = parser.crawl_delay(USER_AGENT_TOKEN) or parser.crawl_delay("*") or 0.5
+    return parser, min(max(float(delay), 0.25), 5.0)
+
+
+def _same_site(first: str, second: str) -> bool:
+    left = (urlsplit(first).hostname or "").casefold().removeprefix("www.")
+    right = (urlsplit(second).hostname or "").casefold().removeprefix("www.")
+    return bool(left and left == right)
+
+
+def _contact_urls(page_url: str, links: list[str]) -> list[str]:
+    ranked: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for raw in links:
+        candidate = urljoin(page_url, raw)
+        parsed = urlsplit(candidate)
+        if parsed.scheme not in {"http", "https"} or not _same_site(page_url, candidate):
+            continue
+        clean = urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", parsed.query, ""))
+        if clean in seen:
+            continue
+        lowered = f"{parsed.path} {parsed.query}".casefold()
+        matches = [index for index, hint in enumerate(CONTACT_HINTS) if hint in lowered]
+        if matches:
+            seen.add(clean)
+            ranked.append((min(matches), clean))
+    return [url for _rank, url in sorted(ranked)[: MAX_PAGES - 1]]
+
+
+def _fallback_business_name(page: dict[str, object], hostname: str) -> str:
+    for key in ("businessNames", "siteName"):
+        value = page.get(key)
+        if isinstance(value, list) and value:
+            return str(value[0])[:200]
+        if isinstance(value, str) and value:
+            return value[:200]
+    for key in ("h1", "title"):
+        value = str(page.get(key) or "")
+        if value:
+            return re.split(r"\s+[|—–-]\s+", value, maxsplit=1)[0][:200]
+    return hostname.removeprefix("www.")[:200]
+
+
+async def crawl_website(value: str) -> dict[str, object]:
+    async with CRAWL_LOCK:
+        return await _crawl_website(value)
+
+
+async def _crawl_website(value: str) -> dict[str, object]:
+    start_url = await validate_public_url(value)
+    timeout = httpx.Timeout(15, connect=8)
+    pages: list[dict[str, object]] = []
+    emails: list[str] = []
+    phones: list[str] = []
+    locations: list[str] = []
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        robots, delay = await _robots(client, start_url)
+        queue = [start_url]
+        visited: set[str] = set()
+        while queue and len(pages) < MAX_PAGES:
+            url = queue.pop(0)
+            if url in visited:
+                continue
+            visited.add(url)
+            if not robots.can_fetch(USER_AGENT_TOKEN, url):
+                if not pages:
+                    raise AppError("Website robots.txt does not allow this page to be crawled.", 403)
+                continue
+            if pages:
+                await asyncio.sleep(delay)
+            final_url, status, _content_type, content = await _read_response(
+                client,
+                url,
+                accepted_types=("text/html", "application/xhtml+xml"),
+                max_bytes=MAX_PAGE_BYTES,
+            )
+            if status >= 400:
+                if not pages:
+                    raise ExternalServiceError(f"Website returned HTTP {status}.")
+                continue
+            extractor = PageExtractor()
+            extractor.feed(content.decode("utf-8", errors="replace"))
+            result = extractor.result()
+            result["url"] = final_url
+            pages.append(result)
+            emails.extend(str(item) for item in result["emails"] if isinstance(item, str))
+            phones.extend(str(item) for item in result["phones"] if isinstance(item, str))
+            locations.extend(str(item) for item in result["locations"] if isinstance(item, str))
+            if len(pages) == 1:
+                queue.extend(_contact_urls(final_url, [str(item) for item in result["links"]]))
+
+    if not pages:
+        raise ExternalServiceError("Website did not return a crawlable HTML page.")
+    canonical_url = str(pages[0]["url"])
+    hostname = urlsplit(canonical_url).hostname or ""
+    description = next((str(page["description"]) for page in pages if page.get("description")), "")
+    return {
+        "businessName": _fallback_business_name(pages[0], hostname),
+        "website": canonical_url,
+        "email": (_unique(emails, 1) or [""])[0],
+        "phone": (_unique(phones, 1) or [""])[0],
+        "location": (_unique(locations, 1) or [""])[0],
+        "sourceRef": canonical_url,
+        "notes": description[:1_000],
+        "pages": [
+            {"url": str(page["url"]), "title": str(page.get("title") or page.get("h1") or "")}
+            for page in pages
+        ],
+        "robotsRespected": True,
+        "userAgent": USER_AGENT,
+    }

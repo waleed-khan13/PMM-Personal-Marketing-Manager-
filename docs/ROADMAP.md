@@ -42,9 +42,9 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 
 ## Milestone 3 — compliant lead intelligence
 
-- [ ] Google Places API adapter with attribution and retention enforcement.
+- [x] Google Places API adapter with encrypted credentials, attribution, and transient no-store results.
 - [x] CSV/CRM/LinkedIn-export import, durable identity deduplication, source evidence, pipeline status, and suppression lists.
-- [ ] Robots-aware public website crawler and contact-page extraction.
+- [x] Robots-aware public website crawler and contact-page extraction with SSRF, redirect, size, type, timeout, and delay controls.
 - [ ] ICP scoring with explainable reason codes and manual correction.
 - [ ] Approved provider SDK; no credential theft, CAPTCHA bypass, or core LinkedIn scraper.
 - [ ] Outreach draft review, export, consent/legal-basis, and retention tools.

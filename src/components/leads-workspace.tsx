@@ -20,6 +20,7 @@ import {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { LeadDiscoveryPanel } from "@/components/lead-discovery-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,7 @@ import { parseLeadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
 type LeadFilter = "active" | LeadStatus | "suppressed";
+type ImportLeadSource = Exclude<LeadSource, "website-crawl">;
 
 const filters: Array<{ value: LeadFilter; label: string }> = [
   { value: "active", label: "All active" },
@@ -59,7 +61,7 @@ const filters: Array<{ value: LeadFilter; label: string }> = [
   { value: "suppressed", label: "Suppression list" },
 ];
 
-const sourceLabels: Record<LeadSource, string> = {
+const sourceLabels: Record<ImportLeadSource, string> = {
   csv: "Generic CSV",
   "linkedin-export": "LinkedIn export",
   "crm-export": "CRM export",
@@ -131,7 +133,7 @@ export function LeadsWorkspace({
   const [query, setQuery] = useState("");
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
-  const [source, setSource] = useState<LeadSource>("csv");
+  const [source, setSource] = useState<ImportLeadSource>("csv");
   const [suppressionTarget, setSuppressionTarget] = useState<Lead | null>(null);
   const [suppressionReason, setSuppressionReason] = useState("");
   const preview = useMemo(() => parseLeadCsv(csvText), [csvText]);
@@ -249,6 +251,15 @@ export function LeadsWorkspace({
         <SummaryCard detail="Never reactivated by import" icon={ShieldCheck} label="Suppressed" value={state.leadSummary.suppressed} />
       </div>
 
+      <LeadDiscoveryPanel
+        onImported={async () => {
+          setFilter("active");
+          await loadLeads();
+        }}
+        onStateChange={onStateChange}
+        state={state}
+      />
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(500px,1.15fr)]">
         <Card>
           <CardHeader className="border-b border-zinc-900">
@@ -264,10 +275,10 @@ export function LeadsWorkspace({
             <form className="space-y-4" onSubmit={importRows}>
               <div className="space-y-2">
                 <Label className="text-xs text-zinc-300" htmlFor="lead-source">Data source</Label>
-                <Select onValueChange={(value) => value && setSource(value as LeadSource)} value={source}>
+                <Select onValueChange={(value) => value && setSource(value as ImportLeadSource)} value={source}>
                   <SelectTrigger className="h-10 w-full rounded-md border-input bg-[#080808]" id="lead-source"><SelectValue>{sourceLabels[source]}</SelectValue></SelectTrigger>
                   <SelectContent className="border border-zinc-700 bg-[#0c0c0c]">
-                    {(Object.entries(sourceLabels) as Array<[LeadSource, string]>).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    {(Object.entries(sourceLabels) as Array<[ImportLeadSource, string]>).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -409,7 +420,7 @@ export function LeadsWorkspace({
 
           <div className="flex items-start gap-3 rounded-lg border border-zinc-900 bg-[#050505] p-4 text-xs leading-5 text-zinc-500">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-zinc-400" />
-            <p><span className="font-medium text-zinc-300">Permission-aware by design.</span> LinkedIn pages and Google Maps HTML are not scraped. LinkedIn exports can be imported here; official Google Places discovery and a robots-aware website crawler are the next adapters.</p>
+            <p><span className="font-medium text-zinc-300">Permission-aware by design.</span> LinkedIn pages and Google Maps HTML are never scraped. Google Places results stay transient; only fields independently extracted from robots-allowed public websites enter the local vault.</p>
           </div>
         </div>
       </div>

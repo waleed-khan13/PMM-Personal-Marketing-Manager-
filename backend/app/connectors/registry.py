@@ -3,13 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from app.connectors.base import ConnectorAdapter, ConnectorManifest
+from app.connectors.google_places import GooglePlacesAdapter
 from app.connectors.slack import SlackAdapter
 from app.connectors.wordpress import WordPressAdapter
 from app.errors import AppError
 
 _slack = SlackAdapter()
 _wordpress = WordPressAdapter()
-_adapters: dict[str, ConnectorAdapter] = {"slack": _slack, "wordpress": _wordpress}
+_google_places = GooglePlacesAdapter()
+_adapters: dict[str, ConnectorAdapter] = {
+    "slack": _slack,
+    "wordpress": _wordpress,
+    "google-places": _google_places,
+}
 
 _catalog: tuple[ConnectorManifest, ...] = (
     ConnectorManifest(
@@ -21,6 +27,7 @@ _catalog: tuple[ConnectorManifest, ...] = (
     ),
     _slack.manifest,
     _wordpress.manifest,
+    _google_places.manifest,
     ConnectorManifest(
         adapter_id="meta",
         name="Meta Pages & Instagram",

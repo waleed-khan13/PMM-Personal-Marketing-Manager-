@@ -7,6 +7,8 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 
 def test_health_state_and_encrypted_settings(client) -> None:
     health = client.get("/api/health")
@@ -131,6 +133,135 @@ def test_lead_import_deduplicates_tracks_evidence_and_honors_suppression(client)
     assert restored.status_code == 200
     assert restored.json()["lead"]["suppressed"] is False
     assert restored.json()["lead"]["status"] == "qualified"
+
+
+def test_google_places_connector_is_encrypted_and_search_results_are_transient(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+
+    api_key = "google-places-local-secret"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "google-places",
+            "name": "Local discovery",
+            "config": {"region_code": "PK", "language_code": "en"},
+            "secrets": {"api_key": api_key},
+            "scopes": ["places:search"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    assert account["secretStatus"] == {"api_key": True}
+    assert api_key not in created.text
+
+    from app.config import get_settings
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        encrypted = connection.execute(
+            "SELECT encrypted_secrets FROM connector_accounts WHERE id = ?",
+            (account["id"],),
+        ).fetchone()[0]
+    assert api_key not in encrypted
+
+    async def fake_test(_self, config, secrets):
+        assert config == {"region_code": "PK", "language_code": "en"}
+        assert secrets == {"api_key": api_key}
+        return ConnectorTestResult(
+            ok=True,
+            message="Google Places API key verified.",
+            remote_account_id="places-api-new",
+        )
+
+    monkeypatch.setattr("app.connectors.google_places.GooglePlacesAdapter.test_connection", fake_test)
+    tested = client.post(f"/api/connectors/{account['id']}/test")
+    assert tested.status_code == 200
+
+    async def fake_search(key, query, **options):
+        assert key == api_key
+        assert query == "dentists in Lahore"
+        assert options["region_code"] == "PK"
+        return [
+            {
+                "placeId": "place-123",
+                "name": "Example Dental",
+                "address": "Lahore, Pakistan",
+                "website": "https://dental.example/",
+                "phone": "+92 300 0000000",
+                "googleMapsUri": "https://maps.google.com/?cid=123",
+                "attributions": [],
+            }
+        ]
+
+    monkeypatch.setattr("app.main.search_google_places", fake_search)
+    discovered = client.post(
+        "/api/leads/discover/google-places",
+        json={"query": "dentists in Lahore", "pageSize": 10},
+    )
+    assert discovered.status_code == 200
+    assert discovered.headers["cache-control"] == "no-store"
+    assert discovered.json()["storagePolicy"] == "transient"
+    assert discovered.json()["attribution"] == "Google Maps"
+    assert discovered.json()["results"][0]["placeId"] == "place-123"
+    assert client.get("/api/leads?query=Example%20Dental").json()["total"] == 0
+
+
+def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
+    from app.errors import AppError
+    from app.services.crawler import PageExtractor, validate_public_url
+
+    extractor = PageExtractor()
+    extractor.feed(
+        """
+        <html><head><title>Acme Studio | Home</title><meta name="description" content="Local studio">
+        <script type="application/ld+json">{
+          "@type":"LocalBusiness","name":"Acme Studio","telephone":"+92 300 1234567",
+          "email":"hello@acme.example","address":{"addressLocality":"Karachi","addressCountry":"PK"}
+        }</script></head><body><a href="/contact">Contact</a><h1>Acme Studio</h1></body></html>
+        """
+    )
+    extracted = extractor.result()
+    assert extracted["businessNames"] == ["Acme Studio"]
+    assert extracted["emails"] == ["hello@acme.example"]
+    assert extracted["phones"] == ["+92 300 1234567"]
+    assert extracted["locations"] == ["Karachi, PK"]
+
+    with pytest.raises(AppError, match="public internet addresses"):
+        asyncio.run(validate_public_url("http://127.0.0.1/private"))
+
+    async def fake_crawl(url: str):
+        assert url == "https://acme.example"
+        return {
+            "businessName": "Acme Studio",
+            "website": "https://acme.example/",
+            "email": "hello@acme.example",
+            "phone": "+92 300 1234567",
+            "location": "Karachi, PK",
+            "sourceRef": "https://acme.example/",
+            "notes": "Local studio",
+            "pages": [
+                {"url": "https://acme.example/", "title": "Acme Studio"},
+                {"url": "https://acme.example/contact", "title": "Contact"},
+            ],
+            "robotsRespected": True,
+            "userAgent": "LocalGrowthOS/0.6",
+        }
+
+    monkeypatch.setattr("app.main.crawl_website", fake_crawl)
+    preview = client.post("/api/leads/crawl", json={"url": "https://acme.example"})
+    assert preview.status_code == 200
+    assert preview.headers["cache-control"] == "no-store"
+    assert preview.json()["result"]["robotsRespected"] is True
+
+    imported = client.post(
+        "/api/leads/import",
+        json={"source": "website-crawl", "rows": [preview.json()["result"]]},
+    )
+    assert imported.status_code == 200
+    lead = client.get("/api/leads?query=acme.example").json()["items"][0]
+    assert "website-crawl" in {item["source"] for item in lead["evidence"]}
+    website_evidence = next(item for item in lead["evidence"] if item["source"] == "website-crawl")
+    assert website_evidence["sourceLabel"] == "Public website crawl"
 
 
 def test_draft_version_approval_and_single_publish(client, monkeypatch) -> None:

@@ -19,6 +19,7 @@ SOURCE_LABELS = {
     "linkedin-export": "LinkedIn export",
     "crm-export": "CRM export",
     "manual": "Manual entry",
+    "website-crawl": "Public website crawl",
 }
 
 

@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.connector_store import (
     create_connector,
     delete_connector,
+    primary_connector_runtime,
     public_connector_state,
     update_connector,
 )
@@ -34,6 +35,7 @@ from app.schemas import (
     DecisionRequest,
     EditPostRequest,
     GeneratePostRequest,
+    GooglePlacesSearchRequest,
     LeadImportRequest,
     LeadStatusUpdate,
     LeadSuppressionUpdate,
@@ -43,8 +45,11 @@ from app.schemas import (
     SchedulePostRequest,
     SchedulerUpdate,
     TelegramUpdate,
+    WebsiteCrawlRequest,
     WorkspaceUpdate,
 )
+from app.services.crawler import crawl_website
+from app.services.google_places import search_google_places
 from app.services.provider import generate_content, test_provider, validate_base_url
 from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.telegram import (
@@ -167,6 +172,36 @@ def get_leads(
 def create_lead_import(payload: LeadImportRequest) -> dict[str, Any]:
     result = import_leads(payload)
     return {"ok": True, "result": result, "state": state_response()}
+
+
+@app.post("/api/leads/discover/google-places")
+async def discover_google_places(payload: GooglePlacesSearchRequest) -> JSONResponse:
+    runtime = primary_connector_runtime("google-places", verified_only=True)
+    results = await search_google_places(
+        str(runtime["secrets"].get("api_key") or ""),
+        payload.query,
+        page_size=payload.page_size,
+        language_code=str(runtime["config"].get("language_code") or ""),
+        region_code=str(runtime["config"].get("region_code") or ""),
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "results": results,
+            "storagePolicy": "transient",
+            "attribution": "Google Maps",
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/leads/crawl")
+async def preview_website_lead(payload: WebsiteCrawlRequest) -> JSONResponse:
+    result = await crawl_website(payload.url)
+    return JSONResponse(
+        {"ok": True, "result": result},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.patch("/api/leads/{lead_id}")

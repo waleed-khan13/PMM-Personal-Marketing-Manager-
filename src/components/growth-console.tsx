@@ -644,7 +644,7 @@ export function GrowthConsole() {
   );
 
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 

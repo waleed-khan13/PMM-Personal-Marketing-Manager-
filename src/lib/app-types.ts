@@ -4,7 +4,7 @@ export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "p
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
 export type ConnectorCapability = "approval" | "notification" | "publish" | "leads" | "analytics" | "cms";
 export type ConnectorAvailability = "available" | "planned" | "access-gated" | "notification-only" | "built-in";
-export type LeadSource = "csv" | "linkedin-export" | "crm-export" | "manual";
+export type LeadSource = "csv" | "linkedin-export" | "crm-export" | "manual" | "website-crawl";
 export type LeadStatus = "new" | "qualified" | "contacted" | "archived";
 
 export interface WorkspaceSettings {
@@ -201,6 +201,34 @@ export interface LeadImportResult {
   merged: number;
   unchanged: number;
   suppressed: number;
+}
+
+export interface GooglePlaceAttribution {
+  provider: string;
+  providerUri: string;
+}
+
+export interface GooglePlaceResult {
+  placeId: string;
+  name: string;
+  address: string;
+  website: string;
+  phone: string;
+  googleMapsUri: string;
+  attributions: GooglePlaceAttribution[];
+}
+
+export interface GooglePlacesSearchResponse {
+  ok: boolean;
+  results: GooglePlaceResult[];
+  storagePolicy: "transient";
+  attribution: "Google Maps";
+}
+
+export interface WebsiteCrawlResult extends LeadImportRow {
+  pages: Array<{ url: string; title: string }>;
+  robotsRespected: boolean;
+  userAgent: string;
 }
 
 export interface PublicAppState {
