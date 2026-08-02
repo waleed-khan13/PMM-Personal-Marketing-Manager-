@@ -116,7 +116,7 @@ export interface ConnectorAccount {
   adapterId: string;
   adapterName: string;
   name: string;
-  config: Record<string, string>;
+  config: Record<string, string | boolean>;
   secretStatus: Record<string, boolean>;
   scopes: string[];
   capabilities: ConnectorCapability[];
@@ -125,6 +125,11 @@ export interface ConnectorAccount {
   remoteAccountId: string | null;
   lastVerifiedAt: string | null;
   lastError: string | null;
+  listener: {
+    active: boolean;
+    status: "stopped" | "starting" | "connecting" | "listening" | "retrying";
+    lastError: string | null;
+  };
   createdAt: string;
   updatedAt: string;
 }

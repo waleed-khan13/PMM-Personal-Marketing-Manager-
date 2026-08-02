@@ -11,6 +11,7 @@ def client(tmp_path_factory: pytest.TempPathFactory):
     os.environ["LOCALGROWTH_DATA_DIR"] = str(data_dir)
     os.environ["LOCALGROWTH_TELEGRAM_POLL_TIMEOUT"] = "5"
     os.environ["LOCALGROWTH_SCHEDULER_INTERVAL"] = "0.1"
+    os.environ["LOCALGROWTH_SLACK_SOCKET_MODE"] = "0"
 
     from app.config import get_settings
 

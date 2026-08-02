@@ -13,7 +13,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] Native Node and loopback-only Docker packaging.
 - [ ] Automated UI and accessibility tests.
 
-## Milestone 1 — local application core (current)
+## Milestone 1 — local application core (complete)
 
 - [x] FastAPI service bound only to `127.0.0.1` or the private Compose network.
 - [x] SQLite WAL database with SQLAlchemy models and Alembic migrations.
@@ -26,13 +26,13 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 
 **Acceptance:** a fresh install starts locally, connects Ollama or an API provider, generates a draft, receives a Telegram decision through long polling, publishes exactly once, survives a restart, and exposes the complete audit trail without any hosted LocalGrowth service.
 
-## Milestone 2 — social publishing
+## Milestone 2 — social publishing (current)
 
 - [x] Local connector manifests, capability registry, CRUD API, and encrypted scoped multi-secret token vault.
 - [x] Slack account configuration plus real bot identity and Socket Mode token health checks.
 - [ ] Meta Pages/Instagram professional account adapter.
 - [ ] LinkedIn Posts adapter for users with approved API access.
-- [ ] Slack Socket Mode approval listener and version-bound interactive decisions.
+- [x] Slack Socket Mode approval listener, outbound Block Kit requests, and version-bound interactive decisions.
 - [ ] WhatsApp notification adapter; interactive approval remains optional because Meta requires a reachable webhook.
 - [ ] Media processing, per-platform validation, calendar, and failure recovery.
 - [ ] Normalized engagement metrics and experiment ledger.

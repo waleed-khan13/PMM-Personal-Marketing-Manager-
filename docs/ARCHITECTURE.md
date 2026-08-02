@@ -71,7 +71,7 @@ The local scheduler claims one due SQLite job at a time, recovers stale locks on
 
 - Dashboard decisions are always available and require no external callback.
 - Telegram uses `getUpdates` long polling from the local worker; a public webhook is neither requested nor required.
-- Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. The planned approval listener will use Socket Mode so decisions arrive over an outbound WebSocket.
+- Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. Verified, enabled accounts run a supervised Socket Mode connection; every envelope is acknowledged before a configured-channel, revision-bound decision is applied.
 - Connectors that mandate a public inbound webhook, including interactive WhatsApp Cloud callbacks, are notification-only or optional in strict localhost mode.
 
 ## Adapter families

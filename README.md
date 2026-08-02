@@ -14,9 +14,10 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Publish an approved Telegram draft exactly once and record its remote message ID.
 - Schedule approved Telegram revisions with a restart-safe SQLite job queue, pause/resume, catch-up, cancellation, and reviewed retries.
 - Save a scoped Slack connector in the local vault and verify its bot identity and Socket Mode app token against Slack's real API.
+- Send revision-bound Slack approval buttons and receive approve/reject decisions through an outbound-only Socket Mode listener.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, X, and blogs; the interactive Slack approval listener; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.3 publishes and schedules only to Telegram and never pretends an unavailable integration succeeded.
+Publishing adapters for LinkedIn, Instagram, Facebook, X, and blogs; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.3 publishes and schedules only to Telegram and never pretends an unavailable integration succeeded.
 
 ## Native localhost run
 
@@ -44,7 +45,7 @@ Complete the checklist in the dashboard:
 5. Generate and review a Telegram draft, then approve it.
 6. Publish immediately or schedule the exact approved revision from the local queue.
 
-Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and can test bot identity plus Socket Mode access. Receiving Slack approval decisions is not enabled yet.
+Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
 
 For a production-mode native run:
 
@@ -70,6 +71,12 @@ Compose runs the FastAPI service on a private container network and exposes only
 Telegram notifications and publishing are outbound API calls. Approval buttons use Telegram `getUpdates` long polling from the local worker, so no domain, public HTTPS endpoint, tunnel, webhook, or LocalGrowth cloud service is required.
 
 The application must be running to receive a new Telegram decision. Telegram retains pending bot updates temporarily; LocalGrowth stores the processed update ID in SQLite to reject replays after restart.
+
+## Slack approvals without hosting
+
+Create a Slack app, enable Socket Mode and interactivity, add the `chat:write` bot scope, and create an app-level token with `connections:write`. Install the app in your workspace, invite it to the approval channel, then save the channel ID, `xoxb-` bot token, and `xapp-` app token under Integrations.
+
+After **Save & test**, LocalGrowth opens an outbound WebSocket and shows `Listening`. No public request URL is needed. The application must remain running to receive decisions; connector errors and retries stay visible in the local UI.
 
 ## Local-only behavior
 
@@ -99,7 +106,7 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram poller, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram/Slack listeners, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
 - `backend/tests` — local API, connector-vault redaction, encryption, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.

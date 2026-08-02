@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from app.connector_store import connector_runtime, record_connector_test
+from typing import Any
+
+from app.connector_store import (
+    connector_runtime,
+    primary_connector_runtime,
+    record_connector_test,
+)
 from app.connectors.base import ConnectorTestResult
 from app.connectors.registry import get_adapter
 from app.errors import AppError
+from app.services.slack import send_approval_message
 
 
 async def test_saved_connector(account_id: str) -> ConnectorTestResult:
@@ -26,3 +33,13 @@ async def test_saved_connector(account_id: str) -> ConnectorTestResult:
         message=result.message,
     )
     return result
+
+
+async def send_saved_slack_approval(post: dict[str, Any]) -> dict[str, str]:
+    runtime = primary_connector_runtime("slack", verified_only=True)
+    message_ts = await send_approval_message(
+        str(runtime["secrets"].get("bot_token") or ""),
+        str(runtime["config"].get("approval_channel_id") or ""),
+        post,
+    )
+    return {"accountId": str(runtime["id"]), "messageTs": message_ts}

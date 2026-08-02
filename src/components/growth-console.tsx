@@ -140,7 +140,7 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
   integrations: {
     eyebrow: "Bring your own stack",
     title: "Connections",
-    description: "Connect local or hosted AI and the Telegram approval channel.",
+    description: "Connect local or hosted AI and outbound-only approval channels.",
   },
   activity: {
     eyebrow: "Local audit trail",
@@ -520,12 +520,14 @@ export function GrowthConsole() {
     tone: string;
     objective: string;
     notifyTelegram: boolean;
+    notifySlack: boolean;
   }>({
     topic: "",
     channel: "linkedin",
     tone: "Clear, useful and confident",
     objective: "Build awareness and start relevant conversations",
     notifyTelegram: true,
+    notifySlack: false,
   });
 
   const loadState = useCallback(async () => {
@@ -559,7 +561,7 @@ export function GrowthConsole() {
         if (slack) {
           setSlackForm({
             name: slack.name,
-            approvalChannelId: slack.config.approval_channel_id ?? "",
+            approvalChannelId: String(slack.config.approval_channel_id ?? ""),
             botToken: "",
             appToken: "",
             enabled: slack.enabled,
@@ -583,16 +585,21 @@ export function GrowthConsole() {
     !appState?.scheduler.paused
       && appState?.jobs.some((job) => ["queued", "retrying", "running"].includes(job.status)),
   );
+  const slackShouldRefresh = Boolean(
+    appState?.connectors.accounts.some(
+      (account) => account.adapterId === "slack" && account.enabled && account.status === "verified",
+    ),
+  );
 
   useEffect(() => {
-    if (!appState?.telegram.pollingEnabled && !schedulerShouldRefresh) return;
+    if (!appState?.telegram.pollingEnabled && !schedulerShouldRefresh && !slackShouldRefresh) return;
     const interval = window.setInterval(() => {
       void requestJson<PublicAppState>("/api/state", { cache: "no-store" })
         .then(setAppState)
         .catch(() => undefined);
     }, 5_000);
     return () => window.clearInterval(interval);
-  }, [appState?.telegram.pollingEnabled, schedulerShouldRefresh]);
+  }, [appState?.telegram.pollingEnabled, schedulerShouldRefresh, slackShouldRefresh]);
 
   const counts = useMemo(() => {
     const posts = appState?.posts ?? [];
@@ -732,6 +739,7 @@ export function GrowthConsole() {
         ok: boolean;
         post: GeneratedPost;
         notification: { ok: boolean; message: string } | null;
+        notifications: Array<{ channel: "telegram" | "slack"; ok: boolean; message: string }>;
         state: PublicAppState;
       }>("/api/posts/generate", {
         method: "POST",
@@ -740,8 +748,18 @@ export function GrowthConsole() {
       setAppState(response.state);
       setGenerateForm((current) => ({ ...current, topic: "" }));
       toast.success("Draft generated", { description: `${channelLabels[response.post.channel]} · ${response.post.model}` });
-      if (response.notification?.ok === false) toast.warning("Draft saved, but Telegram notification failed", { description: response.notification.message });
-      if (response.notification?.ok) toast.success(response.notification.message);
+      const notifications = response.notifications ?? (
+        response.notification ? [{ channel: "telegram" as const, ...response.notification }] : []
+      );
+      notifications.forEach((notification) => {
+        if (notification.ok) {
+          toast.success(notification.message);
+        } else {
+          toast.warning(`Draft saved, but ${notification.channel} notification failed`, {
+            description: notification.message,
+          });
+        }
+      });
       setQueueFilter("pending");
       navigate("queue");
     } catch (error) {
@@ -762,6 +780,25 @@ export function GrowthConsole() {
       toast.success(decision === "approve" ? "Draft approved and locked" : "Draft rejected");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Decision failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendSlackApproval(post: GeneratedPost) {
+    setBusy(`slack-approval-${post.id}`);
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(
+        `/api/posts/${post.id}/approvals/slack`,
+        {
+          method: "POST",
+          body: JSON.stringify({ revision: post.revision }),
+        },
+      );
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not send this draft to Slack.");
     } finally {
       setBusy(null);
     }
@@ -1169,17 +1206,31 @@ export function GrowthConsole() {
                     <Field htmlFor="objective" label="Objective">
                       <Input id="objective" maxLength={500} onChange={(event) => setGenerateForm((current) => ({ ...current, objective: event.target.value }))} value={generateForm.objective} />
                     </Field>
-                    <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
-                      <div>
-                        <Label className="text-xs text-zinc-200" htmlFor="notify-telegram">Send for Telegram approval</Label>
-                        <p className="mt-1 text-[11px] text-zinc-600">Draft is always saved even if notification fails.</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
+                        <div>
+                          <Label className="text-xs text-zinc-200" htmlFor="notify-telegram">Telegram approval</Label>
+                          <p className="mt-1 text-[11px] text-zinc-600">Send to the configured Telegram chat.</p>
+                        </div>
+                        <Switch
+                          checked={generateForm.notifyTelegram}
+                          disabled={!appState.telegram.configured}
+                          id="notify-telegram"
+                          onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifyTelegram: checked }))}
+                        />
                       </div>
-                      <Switch
-                        checked={generateForm.notifyTelegram}
-                        disabled={!appState.telegram.configured}
-                        id="notify-telegram"
-                        onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifyTelegram: checked }))}
-                      />
+                      <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
+                        <div>
+                          <Label className="text-xs text-zinc-200" htmlFor="notify-slack">Slack approval</Label>
+                          <p className="mt-1 text-[11px] text-zinc-600">Send revision-bound action buttons.</p>
+                        </div>
+                        <Switch
+                          checked={generateForm.notifySlack}
+                          disabled={slackAccount?.status !== "verified" || !slackAccount.enabled}
+                          id="notify-slack"
+                          onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifySlack: checked }))}
+                        />
+                      </div>
                     </div>
                     {!appState.provider.configured ? (
                       <div className="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
@@ -1311,6 +1362,9 @@ export function GrowthConsole() {
                             {!['publishing', 'published'].includes(post.status) ? <Button onClick={() => openEdit(post)} size="sm" variant="outline"><Pencil /> Edit</Button> : null}
                             {post.status === "pending" ? (
                               <>
+                                {slackAccount?.status === "verified" && slackAccount.enabled ? (
+                                  <Button disabled={busy === `slack-approval-${post.id}`} onClick={() => void sendSlackApproval(post)} size="sm" variant="outline">{busy === `slack-approval-${post.id}` ? <Loader2 className="animate-spin" /> : <MessageCircle />} Send to Slack</Button>
+                                ) : null}
                                 <Button disabled={busy === `reject-${post.id}`} onClick={() => void decidePost(post, "reject")} size="sm" variant="ghost">{busy === `reject-${post.id}` ? <Loader2 className="animate-spin" /> : <X />} Reject</Button>
                                 <Button disabled={busy === `approve-${post.id}`} onClick={() => void decidePost(post, "approve")} size="sm">{busy === `approve-${post.id}` ? <Loader2 className="animate-spin" /> : <Check />} Approve</Button>
                               </>
@@ -1505,18 +1559,19 @@ export function GrowthConsole() {
                 <CardHeader className="border-b border-zinc-900">
                   <div className="flex items-center gap-3">
                     <IntegrationIcon><LockKeyhole className="size-4" /></IntegrationIcon>
-                    <div><CardTitle>Slack approval connector</CardTitle><CardDescription>Encrypted local credentials with a real Slack API health check.</CardDescription></div>
+                    <div><CardTitle>Slack approval connector</CardTitle><CardDescription>Outbound approval buttons and local Socket Mode decisions.</CardDescription></div>
                   </div>
                   <CardAction>
                     <Badge
                       className={cn(
-                        slackAccount?.status === "verified" && "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+                        slackAccount?.status === "verified" && slackAccount.listener.status !== "retrying" && "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+                        slackAccount?.listener.status === "retrying" && "border-amber-500/25 bg-amber-500/8 text-amber-300",
                         slackAccount?.status === "error" && "border-red-500/25 bg-red-500/8 text-red-300",
                         (!slackAccount || slackAccount.status === "saved") && "border-zinc-700 text-zinc-400",
                       )}
                       variant="outline"
                     >
-                      {slackAccount?.status === "verified" ? "Verified" : slackAccount?.status === "error" ? "Needs attention" : slackAccount ? "Saved" : "Not configured"}
+                      {slackAccount?.listener.active ? "Listening" : slackAccount?.listener.status === "retrying" ? "Retrying" : slackAccount?.status === "verified" ? "Verified" : slackAccount?.status === "error" ? "Needs attention" : slackAccount ? "Saved" : "Not configured"}
                     </Badge>
                   </CardAction>
                 </CardHeader>
@@ -1554,6 +1609,10 @@ export function GrowthConsole() {
                       <div><p className="text-xs font-medium text-zinc-200">Local secret vault</p><p className="mt-1 text-[11px] leading-5 text-zinc-600">Tokens are AES-256-GCM encrypted at rest. The API and browser receive presence flags, never token values.</p></div>
                     </div>
                     <Separator className="bg-zinc-900" />
+                    <div className="flex items-start gap-3 rounded-md border border-zinc-900 p-3">
+                      <RadioTower className={cn("mt-0.5 size-4 shrink-0", slackAccount?.listener.active ? "text-emerald-400" : slackAccount?.listener.status === "retrying" ? "text-amber-400" : "text-zinc-600")} />
+                      <div className="min-w-0"><p className="text-xs font-medium text-zinc-300">Socket Mode listener · <span className="font-normal capitalize text-zinc-500">{slackAccount?.listener.status ?? "stopped"}</span></p><p className="mt-1 text-[11px] leading-5 text-zinc-600">Runs outbound-only while this verified connector is enabled.</p>{slackAccount?.listener.lastError ? <p className="mt-2 text-[11px] leading-5 text-amber-300">{slackAccount.listener.lastError}</p> : null}</div>
+                    </div>
                     <div>
                       <p className="text-[10px] font-semibold tracking-[0.16em] text-zinc-600 uppercase">Required scopes</p>
                       <div className="mt-2 flex flex-wrap gap-2"><Badge variant="outline">chat:write</Badge><Badge variant="outline">connections:write</Badge></div>
@@ -1563,7 +1622,7 @@ export function GrowthConsole() {
                       <div className="rounded-md border border-zinc-900 p-3"><p className="text-zinc-600">App token</p><p className={cn("mt-1", slackAccount?.secretStatus.app_token ? "text-emerald-300" : "text-zinc-500")}>{slackAccount?.secretStatus.app_token ? "Stored" : "Missing"}</p></div>
                     </div>
                     {slackAccount?.lastVerifiedAt ? <p className="font-mono text-[10px] text-zinc-600">Last verified {formatDate(slackAccount.lastVerifiedAt)}</p> : null}
-                    <p className="text-[11px] leading-5 text-zinc-700">This milestone validates Slack identity and Socket Mode access. Interactive Slack approval listening is the next adapter step.</p>
+                    <p className="text-[11px] leading-5 text-zinc-700">Slack actions are bound to the exact draft revision. Stale or repeated clicks are rejected by the same transactional approval boundary as the dashboard.</p>
                   </div>
                 </CardContent>
               </Card>

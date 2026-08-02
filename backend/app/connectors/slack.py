@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
 from app.connectors.base import ConnectorField, ConnectorManifest, ConnectorTestResult
 from app.errors import ExternalServiceError
+from app.services.slack import open_socket_url, slack_request
 
 
 class SlackAdapter:
@@ -59,31 +58,8 @@ class SlackAdapter:
         if not str(config.get("approval_channel_id") or "").strip():
             raise ExternalServiceError("Slack approval channel ID is required.")
 
-        timeout = httpx.Timeout(12.0, connect=5.0)
-        try:
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-                auth_response = await client.post(
-                    "https://slack.com/api/auth.test",
-                    headers={"Authorization": f"Bearer {bot_token}"},
-                )
-                socket_response = await client.post(
-                    "https://slack.com/api/apps.connections.open",
-                    headers={"Authorization": f"Bearer {app_token}"},
-                )
-        except httpx.HTTPError as error:
-            raise ExternalServiceError("Could not reach Slack from this computer.") from error
-
-        try:
-            auth_payload = auth_response.json()
-            socket_payload = socket_response.json()
-        except ValueError as error:
-            raise ExternalServiceError("Slack returned an unreadable response.") from error
-        if not isinstance(auth_payload, dict) or not auth_payload.get("ok"):
-            reason = str(auth_payload.get("error") or "authentication failed") if isinstance(auth_payload, dict) else "authentication failed"
-            raise ExternalServiceError(f"Slack bot authentication failed: {reason}.")
-        if not isinstance(socket_payload, dict) or not socket_payload.get("ok"):
-            reason = str(socket_payload.get("error") or "Socket Mode failed") if isinstance(socket_payload, dict) else "Socket Mode failed"
-            raise ExternalServiceError(f"Slack Socket Mode validation failed: {reason}.")
+        auth_payload = await slack_request(bot_token, "auth.test", timeout=12)
+        await open_socket_url(app_token)
 
         team_id = str(auth_payload.get("team_id") or "")
         return ConnectorTestResult(

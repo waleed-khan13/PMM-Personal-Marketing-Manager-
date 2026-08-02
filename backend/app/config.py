@@ -19,6 +19,7 @@ class Settings:
     scheduler_interval: float
     scheduler_catch_up_hours: int
     scheduler_stale_minutes: int
+    slack_socket_enabled: bool
 
     @property
     def database_url(self) -> str:
@@ -37,6 +38,12 @@ def get_settings() -> Settings:
     scheduler_interval = max(0.1, min(float(os.getenv("LOCALGROWTH_SCHEDULER_INTERVAL", "1")), 10))
     scheduler_catch_up_hours = max(1, min(int(os.getenv("LOCALGROWTH_SCHEDULER_CATCH_UP_HOURS", "24")), 168))
     scheduler_stale_minutes = max(1, min(int(os.getenv("LOCALGROWTH_SCHEDULER_STALE_MINUTES", "10")), 60))
+    slack_socket_enabled = os.getenv("LOCALGROWTH_SLACK_SOCKET_MODE", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
     return Settings(
         project_root=project_root,
         data_dir=data_dir,
@@ -49,4 +56,5 @@ def get_settings() -> Settings:
         scheduler_interval=scheduler_interval,
         scheduler_catch_up_hours=scheduler_catch_up_hours,
         scheduler_stale_minutes=scheduler_stale_minutes,
+        slack_socket_enabled=slack_socket_enabled,
     )

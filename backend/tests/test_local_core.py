@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
@@ -245,8 +246,42 @@ def test_durable_scheduler_is_idempotent_and_publishes_after_resume(client, monk
     assert final_job["attempts"] == 1
 
 
+def test_slack_approval_message_buttons_are_revision_bound(monkeypatch) -> None:
+    captured: dict = {}
+
+    async def fake_request(_token: str, method: str, body: dict, **_kwargs):
+        captured["method"] = method
+        captured["body"] = body
+        return {"ok": True, "ts": "1712345678.000200"}
+
+    monkeypatch.setattr("app.services.slack.slack_request", fake_request)
+    from app.services.slack import send_approval_message
+
+    message_ts = asyncio.run(
+        send_approval_message(
+            "xoxb-test",
+            "C1234567890",
+            {
+                "id": "post-123",
+                "revision": 7,
+                "channel": "linkedin",
+                "title": "A safe review title",
+                "body": "Review this exact content.",
+                "hashtags": ["#local"],
+            },
+        )
+    )
+    assert message_ts == "1712345678.000200"
+    assert captured["method"] == "chat.postMessage"
+    assert captured["body"]["channel"] == "C1234567890"
+    actions = captured["body"]["blocks"][-1]["elements"]
+    assert actions[0]["value"] == "lg:approve:post-123:7"
+    assert actions[1]["value"] == "lg:reject:post-123:7"
+
+
 def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch) -> None:
     from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
 
     catalog = client.get("/api/connectors")
     assert catalog.status_code == 200
@@ -329,6 +364,126 @@ def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch
         item for item in tested.json()["state"]["connectors"]["accounts"] if item["id"] == account_id
     )
     assert verified["status"] == "verified"
+    assert verified["listener"] == {"active": False, "status": "stopped", "lastError": None}
+
+    provider = client.put(
+        "/api/settings/provider",
+        json={
+            "kind": "openai-compatible",
+            "baseUrl": "https://provider.example/v1",
+            "model": "test-model",
+            "apiKey": "provider-test-key",
+        },
+    )
+    assert provider.status_code == 200
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Slack review",
+            body="A revision-bound Slack approval draft.",
+            hashtags=["#slack"],
+            rationale="Exercises Socket Mode approval rules.",
+        )
+
+    sent_posts: list[dict] = []
+
+    async def fake_slack_send(_token: str, channel_id: str, post: dict):
+        assert channel_id == "C9876543210"
+        sent_posts.append(post)
+        return "1712345678.000100"
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr("app.connectors.service.send_approval_message", fake_slack_send)
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Slack workflow",
+            "channel": "linkedin",
+            "tone": "Clear",
+            "objective": "Review the workflow",
+            "notifyTelegram": False,
+            "notifySlack": True,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    assert generated.json()["notifications"] == [
+        {"channel": "slack", "ok": True, "message": "Approval request sent to Slack."}
+    ]
+    assert sent_posts[0]["id"] == post["id"]
+
+    resent = client.post(
+        f"/api/posts/{post['id']}/approvals/slack",
+        json={"revision": post["revision"]},
+    )
+    assert resent.status_code == 200
+    assert resent.json()["delivery"]["messageTs"] == "1712345678.000100"
+
+    from app.slack_listener import process_slack_interaction
+
+    interaction = {
+        "type": "block_actions",
+        "channel": {"id": "C0000000000"},
+        "user": {"id": "U123456"},
+        "actions": [
+            {
+                "action_id": "localgrowth_approve",
+                "value": f"lg:approve:{post['id']}:{post['revision']}",
+            }
+        ],
+    }
+    unauthorized = process_slack_interaction(interaction, "C9876543210")
+    assert unauthorized is not None
+    assert "not authorized" in unauthorized.message
+    pending = next(item for item in client.get("/api/state").json()["posts"] if item["id"] == post["id"])
+    assert pending["status"] == "pending"
+
+    interaction["channel"] = {"id": "C9876543210"}
+
+    class FakeSocket:
+        def __init__(self) -> None:
+            self.sent: list[str] = []
+
+        async def send(self, message: str) -> None:
+            self.sent.append(message)
+
+    socket = FakeSocket()
+    feedback: list[str] = []
+
+    async def fake_feedback(_token: str, _channel: str, _user: str, message: str) -> None:
+        assert socket.sent == ['{"envelope_id": "env-1"}']
+        feedback.append(message)
+
+    monkeypatch.setattr("app.slack_listener.send_decision_feedback", fake_feedback)
+    from app.slack_listener import SlackSocketListener
+
+    listener = SlackSocketListener(enabled=False)
+    reconnect = asyncio.run(
+        listener._handle_envelope(
+            socket,  # type: ignore[arg-type]
+            json.dumps(
+                {
+                    "envelope_id": "env-1",
+                    "type": "interactive",
+                    "payload": interaction,
+                }
+            ),
+            bot_token,
+            "C9876543210",
+            account_id,
+        )
+    )
+    assert reconnect is False
+    assert feedback == ["Revision 1 approved and locked."]
+    approved = next(item for item in client.get("/api/state").json()["posts"] if item["id"] == post["id"])
+    assert approved["status"] == "approved"
+    repeated = process_slack_interaction(interaction, "C9876543210")
+    assert repeated is not None
+    assert "Current status: approved" in repeated.message
+    assert any(
+        event["action"] == "post.approved.slack"
+        for event in client.get("/api/state").json()["audit"]
+    )
 
     removed = client.delete(f"/api/connectors/{account_id}")
     assert removed.status_code == 200

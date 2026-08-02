@@ -491,17 +491,30 @@ def create_post(*, request: dict[str, Any], content: dict[str, Any], provider: d
     return _post_dict(post)
 
 
-def record_approval_sent(post_id: str) -> None:
+def record_approval_sent(post_id: str, source: str = "telegram") -> None:
     with write_session() as session:
         if session.get(Post, post_id) is None:
             return
+        channel = "Slack" if source == "slack" else "Telegram"
         _append_audit(
             session,
             action="approval.sent",
             entity_type="post",
             entity_id=post_id,
-            summary="Approval request sent to Telegram.",
+            summary=f"Approval request sent to {channel}.",
         )
+
+
+def post_for_approval(post_id: str, revision: int) -> dict[str, Any]:
+    with read_session() as session:
+        post = session.get(Post, post_id)
+        if post is None:
+            raise AppError("Draft not found.", 404)
+        if post.revision != revision:
+            raise AppError("This draft changed. Send the latest revision for approval.")
+        if post.status != "pending":
+            raise AppError(f"Only pending drafts can be sent for approval. Current status: {post.status}.")
+        return _post_dict(post)
 
 
 def edit_post(post_id: str, payload: EditPostRequest) -> None:
@@ -546,15 +559,17 @@ def decide_post(post_id: str, revision: int, approved: bool, source: str = "dash
         post.approved_at = utc_now() if approved else None
         post.updated_at = utc_now()
         post.last_error = None
-        suffix = ".telegram" if source == "telegram" else ""
+        external_source = source if source in {"telegram", "slack"} else None
+        suffix = f".{external_source}" if external_source else ""
+        source_label = external_source.title() if external_source else None
         _append_audit(
             session,
             action=f"post.{'approved' if approved else 'rejected'}{suffix}",
             entity_type="post",
             entity_id=post.id,
             summary=(
-                f"Revision {revision} {'approved' if approved else 'rejected'} from Telegram."
-                if source == "telegram"
+                f"Revision {revision} {'approved' if approved else 'rejected'} from {source_label}."
+                if source_label
                 else "Draft approved and version locked."
                 if approved
                 else "Draft rejected."

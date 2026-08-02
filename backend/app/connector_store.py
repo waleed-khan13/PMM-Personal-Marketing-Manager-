@@ -29,7 +29,10 @@ def _encrypt_secrets(secrets: dict[str, str]) -> str:
     return encrypt_secret(json.dumps(secrets, separators=(",", ":"), sort_keys=True))
 
 
-def _public_account(account: ConnectorAccount) -> dict[str, Any]:
+def _public_account(
+    account: ConnectorAccount,
+    listener_status: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     manifest = get_manifest(account.adapter_id)
     try:
         saved_secret_keys = set(_decrypt_secrets(account.encrypted_secrets))
@@ -51,17 +54,30 @@ def _public_account(account: ConnectorAccount) -> dict[str, Any]:
         "remoteAccountId": account.remote_account_id,
         "lastVerifiedAt": account.last_verified_at,
         "lastError": vault_error or account.last_error,
+        "listener": listener_status
+        or {"active": False, "status": "stopped", "lastError": None},
         "createdAt": account.created_at,
         "updatedAt": account.updated_at,
     }
 
 
-def public_connector_state() -> dict[str, Any]:
+def public_connector_state(
+    listener_statuses: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    listener_statuses = listener_statuses or {}
     with read_session() as session:
         accounts = list(session.scalars(select(ConnectorAccount).order_by(ConnectorAccount.created_at.desc())).all())
         return {
             "catalog": connector_catalog(),
-            "accounts": [_public_account(account) for account in accounts],
+            "accounts": [
+                _public_account(
+                    account,
+                    listener_statuses.get(account.id)
+                    if account.enabled and account.status == "verified"
+                    else None,
+                )
+                for account in accounts
+            ],
         }
 
 
@@ -78,7 +94,50 @@ def connector_runtime(account_id: str) -> dict[str, Any]:
             "secrets": _decrypt_secrets(account.encrypted_secrets),
             "scopes": list(account.scopes or []),
             "enabled": account.enabled,
+            "status": account.status,
+            "updated_at": account.updated_at,
         }
+
+
+def connector_runtimes(adapter_id: str, *, verified_only: bool = False) -> list[dict[str, Any]]:
+    get_manifest(adapter_id)
+    with read_session() as session:
+        statement = select(ConnectorAccount).where(
+            ConnectorAccount.adapter_id == adapter_id,
+            ConnectorAccount.enabled.is_(True),
+        )
+        if verified_only:
+            statement = statement.where(ConnectorAccount.status == "verified")
+        accounts = list(session.scalars(statement.order_by(ConnectorAccount.created_at.asc())).all())
+        runtimes: list[dict[str, Any]] = []
+        for account in accounts:
+            try:
+                secrets = _decrypt_secrets(account.encrypted_secrets)
+            except RuntimeError:
+                continue
+            runtimes.append(
+                {
+                    "id": account.id,
+                    "adapter_id": account.adapter_id,
+                    "name": account.name,
+                    "config": dict(account.config or {}),
+                    "secrets": secrets,
+                    "scopes": list(account.scopes or []),
+                    "enabled": account.enabled,
+                    "status": account.status,
+                    "updated_at": account.updated_at,
+                }
+            )
+        return runtimes
+
+
+def primary_connector_runtime(adapter_id: str, *, verified_only: bool = False) -> dict[str, Any]:
+    runtimes = connector_runtimes(adapter_id, verified_only=verified_only)
+    if not runtimes:
+        if verified_only:
+            raise AppError(f"Configure a verified {get_manifest(adapter_id).name} connector first.")
+        raise AppError(f"Configure an enabled {get_manifest(adapter_id).name} connector first.")
+    return runtimes[0]
 
 
 def create_connector(payload: ConnectorAccountUpsert) -> dict[str, Any]:

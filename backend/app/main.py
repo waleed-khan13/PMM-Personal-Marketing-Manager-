@@ -16,11 +16,12 @@ from app.connector_store import (
     public_connector_state,
     update_connector,
 )
-from app.connectors.service import test_saved_connector
+from app.connectors.service import send_saved_slack_approval, test_saved_connector
 from app.errors import AppError, ExternalServiceError
 from app.poller import TelegramPoller
 from app.scheduler import LocalScheduler
 from app.schemas import (
+    ApprovalRequest,
     ConnectorAccountUpsert,
     DecisionRequest,
     EditPostRequest,
@@ -40,6 +41,7 @@ from app.services.telegram import (
     send_approval_request,
     test_connection,
 )
+from app.slack_listener import SlackSocketListener
 from app.store import (
     cancel_job,
     create_post,
@@ -48,6 +50,7 @@ from app.store import (
     fail_publish,
     finish_publish,
     initialize_storage,
+    post_for_approval,
     provider_runtime,
     public_state,
     record_approval_sent,
@@ -65,6 +68,7 @@ from app.store import (
 
 settings = get_settings()
 telegram_poller = TelegramPoller(settings.telegram_poll_timeout)
+slack_listener = SlackSocketListener(settings.slack_socket_enabled)
 local_scheduler = LocalScheduler(
     settings.scheduler_interval,
     settings.scheduler_catch_up_hours,
@@ -76,11 +80,13 @@ local_scheduler = LocalScheduler(
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     initialize_storage()
     telegram_poller.start()
+    slack_listener.start()
     local_scheduler.start()
     try:
         yield
     finally:
         await local_scheduler.stop()
+        await slack_listener.stop()
         await telegram_poller.stop()
 
 
@@ -109,7 +115,7 @@ async def validation_error_handler(_request: Request, error: RequestValidationEr
 
 def state_response() -> dict[str, Any]:
     state = public_state(telegram_poller.status(), local_scheduler.status())
-    state["connectors"] = public_connector_state()
+    state["connectors"] = public_connector_state(slack_listener.statuses())
     return state
 
 
@@ -200,6 +206,7 @@ async def generate_post(payload: GeneratePostRequest) -> dict[str, Any]:
         provider=provider,
     )
 
+    notifications: list[dict[str, Any]] = []
     notification: dict[str, Any] | None = None
     if payload.notify_telegram:
         try:
@@ -211,7 +218,23 @@ async def generate_post(payload: GeneratePostRequest) -> dict[str, Any]:
             notification = {"ok": True, "message": "Approval request sent to Telegram."}
         except AppError as error:
             notification = {"ok": False, "message": error.message}
-    return {"ok": True, "post": post, "notification": notification, "state": state_response()}
+        notifications.append({"channel": "telegram", **notification})
+    if payload.notify_slack:
+        try:
+            await send_saved_slack_approval(post)
+            record_approval_sent(post["id"], source="slack")
+            notifications.append(
+                {"channel": "slack", "ok": True, "message": "Approval request sent to Slack."}
+            )
+        except AppError as error:
+            notifications.append({"channel": "slack", "ok": False, "message": error.message})
+    return {
+        "ok": True,
+        "post": post,
+        "notification": notification,
+        "notifications": notifications,
+        "state": state_response(),
+    }
 
 
 @app.patch("/api/posts/{post_id}")
@@ -224,6 +247,19 @@ def update_post(post_id: str, payload: EditPostRequest) -> dict[str, Any]:
 def post_decision(post_id: str, payload: DecisionRequest) -> dict[str, Any]:
     decide_post(post_id, payload.revision, payload.decision == "approve")
     return {"ok": True, "state": state_response()}
+
+
+@app.post("/api/posts/{post_id}/approvals/slack")
+async def request_slack_approval(post_id: str, payload: ApprovalRequest) -> dict[str, Any]:
+    post = post_for_approval(post_id, payload.revision)
+    delivery = await send_saved_slack_approval(post)
+    record_approval_sent(post_id, source="slack")
+    return {
+        "ok": True,
+        "delivery": delivery,
+        "message": "Approval request sent to Slack.",
+        "state": state_response(),
+    }
 
 
 @app.post("/api/posts/{post_id}/publish")
@@ -282,28 +318,32 @@ async def scheduler_update(payload: SchedulerUpdate) -> dict[str, Any]:
 
 @app.get("/api/connectors")
 def get_connectors() -> dict[str, Any]:
-    return public_connector_state()
+    return public_connector_state(slack_listener.statuses())
 
 
 @app.post("/api/connectors")
 def save_connector(payload: ConnectorAccountUpsert) -> dict[str, Any]:
     account = create_connector(payload)
+    slack_listener.wake()
     return {"ok": True, "account": account, "state": state_response()}
 
 
 @app.put("/api/connectors/{account_id}")
 def replace_connector(account_id: str, payload: ConnectorAccountUpsert) -> dict[str, Any]:
     account = update_connector(account_id, payload)
+    slack_listener.wake()
     return {"ok": True, "account": account, "state": state_response()}
 
 
 @app.post("/api/connectors/{account_id}/test")
 async def connector_health(account_id: str) -> dict[str, Any]:
     result = await test_saved_connector(account_id)
+    slack_listener.wake()
     return {**result.public_dict(), "state": state_response()}
 
 
 @app.delete("/api/connectors/{account_id}")
 def remove_connector(account_id: str) -> dict[str, Any]:
     delete_connector(account_id)
+    slack_listener.wake()
     return {"ok": True, "state": state_response()}

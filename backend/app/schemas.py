@@ -40,6 +40,7 @@ class GeneratePostRequest(ApiModel):
     tone: str = Field(default="Clear and confident", max_length=160)
     objective: str = Field(default="Build useful awareness", max_length=500)
     notify_telegram: bool = True
+    notify_slack: bool = False
 
 
 class EditPostRequest(ApiModel):
@@ -56,6 +57,10 @@ class EditPostRequest(ApiModel):
 
 class DecisionRequest(ApiModel):
     decision: Literal["approve", "reject"]
+    revision: int = Field(ge=1)
+
+
+class ApprovalRequest(ApiModel):
     revision: int = Field(ge=1)
 
 
