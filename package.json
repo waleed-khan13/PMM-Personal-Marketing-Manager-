@@ -1,6 +1,6 @@
 {
   "name": "localgrowth-os",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Open-source, localhost-only AI growth automation for content, leads, and SEO.",
   "license": "MIT",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:web": "next dev",
+    "dev:web": "next dev --webpack",
     "dev:api": "uv run --project backend uvicorn app.main:app --host 127.0.0.1 --port 8000",
     "build": "next build",
     "start": "node scripts/start.mjs",

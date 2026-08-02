@@ -40,6 +40,8 @@ References:
 
 Version 0.8 implements identified sequential crawling, public-address validation, same-domain redirect enforcement, robots rules and crawl delay, strict time/size/content limits, contact-page selection, source URLs, suppression, per-lead JSON export, and explicit lead deletion. A configurable operator contact URL remains roadmap work.
 
+Version 0.9 applies the same public-address, redirect, robots, type, timeout, and size controls to the Local SEO lab. A manual or scheduled audit stores derived checks, metrics, scores, and recommendations but discards fetched HTML. Recommendations are deterministic observations, not guarantees of ranking or a substitute for Lighthouse, Search Console, or professional review; integrations that are not installed are labeled as planned.
+
 ## Lead qualification
 
 - Use business-fit signals such as published service keywords, target geography, website availability, and direct business contact fields.

@@ -1,6 +1,6 @@
 [project]
 name = "localgrowth-api"
-version = "0.8.0"
+version = "0.9.0"
 description = "Local-only FastAPI service for LocalGrowth OS"
 requires-python = ">=3.12"
 dependencies = [

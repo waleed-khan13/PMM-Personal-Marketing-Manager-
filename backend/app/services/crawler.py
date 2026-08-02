@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 import socket
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from ipaddress import ip_address
 from typing import Any
@@ -15,7 +16,7 @@ import httpx
 from app.errors import AppError, ExternalServiceError
 
 USER_AGENT_TOKEN = "LocalGrowthOS"
-USER_AGENT = "LocalGrowthOS/0.8 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
+USER_AGENT = "LocalGrowthOS/0.9 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
 MAX_PAGE_BYTES = 1_000_000
 MAX_PAGES = 4
 CRAWL_LOCK = asyncio.Lock()
@@ -25,6 +26,15 @@ EMAIL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PHONE_PATTERN = re.compile(r"(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)")
+
+
+@dataclass(frozen=True)
+class CrawlResponse:
+    final_url: str
+    status_code: int
+    content_type: str
+    headers: dict[str, str]
+    content: bytes
 
 
 def _clean_text(value: str) -> str:
@@ -166,7 +176,7 @@ class PageExtractor(HTMLParser):
         }
 
 
-def _normalized_url(value: str) -> str:
+def normalize_website_url(value: str) -> str:
     raw = value.strip()
     if "://" not in raw:
         raw = f"https://{raw}"
@@ -185,7 +195,7 @@ def _normalized_url(value: str) -> str:
 
 
 async def validate_public_url(value: str) -> str:
-    url = _normalized_url(value)
+    url = normalize_website_url(value)
     hostname = urlsplit(url).hostname or ""
     try:
         records = await asyncio.to_thread(socket.getaddrinfo, hostname, None, type=socket.SOCK_STREAM)
@@ -197,13 +207,13 @@ async def validate_public_url(value: str) -> str:
     return url
 
 
-async def _read_response(
+async def read_public_page(
     client: httpx.AsyncClient,
     url: str,
     *,
     accepted_types: tuple[str, ...],
     max_bytes: int,
-) -> tuple[str, int, str, bytes]:
+) -> CrawlResponse:
     current = url
     for _redirect in range(4):
         current = await validate_public_url(current)
@@ -221,8 +231,9 @@ async def _read_response(
                     current = target
                     continue
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].casefold()
+                headers = {key.casefold(): value for key, value in response.headers.items()}
                 if response.status_code >= 400:
-                    return current, response.status_code, content_type, b""
+                    return CrawlResponse(current, response.status_code, content_type, headers, b"")
                 if content_type and not any(content_type.startswith(item) for item in accepted_types):
                     raise ExternalServiceError(f"Website returned unsupported content type {content_type}.")
                 declared = int(response.headers.get("content-length", "0") or 0)
@@ -235,10 +246,32 @@ async def _read_response(
                     if size > max_bytes:
                         raise ExternalServiceError("Website page is larger than the crawler safety limit.")
                     chunks.append(chunk)
-                return current, response.status_code, content_type, b"".join(chunks)
+                return CrawlResponse(
+                    current,
+                    response.status_code,
+                    content_type,
+                    headers,
+                    b"".join(chunks),
+                )
         except httpx.HTTPError as error:
             raise ExternalServiceError(f"Website request failed ({type(error).__name__}).") from error
     raise ExternalServiceError("Website redirected too many times.")
+
+
+async def _read_response(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    accepted_types: tuple[str, ...],
+    max_bytes: int,
+) -> tuple[str, int, str, bytes]:
+    response = await read_public_page(
+        client,
+        url,
+        accepted_types=accepted_types,
+        max_bytes=max_bytes,
+    )
+    return response.final_url, response.status_code, response.content_type, response.content
 
 
 async def _robots(client: httpx.AsyncClient, target_url: str) -> tuple[RobotFileParser, float]:
@@ -262,6 +295,10 @@ async def _robots(client: httpx.AsyncClient, target_url: str) -> tuple[RobotFile
         parser.parse([])
     delay = parser.crawl_delay(USER_AGENT_TOKEN) or parser.crawl_delay("*") or 0.5
     return parser, min(max(float(delay), 0.25), 5.0)
+
+
+async def robots_policy(client: httpx.AsyncClient, target_url: str) -> tuple[RobotFileParser, float]:
+    return await _robots(client, target_url)
 
 
 def _same_site(first: str, second: str) -> bool:

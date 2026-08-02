@@ -58,7 +58,15 @@ launch(
 );
 launch(
   process.execPath,
-  [path.join(projectRoot, "node_modules", "next", "dist", "bin", "next"), "dev", "-H", "127.0.0.1", "-p", webPort],
+  [
+    path.join(projectRoot, "node_modules", "next", "dist", "bin", "next"),
+    "dev",
+    "-H",
+    "127.0.0.1",
+    "-p",
+    webPort,
+    "--webpack",
+  ],
   {
     LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
   },

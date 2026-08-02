@@ -313,7 +313,14 @@ def public_state(
         audit = list(
             session.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(200)).all()
         )
-        jobs = list(session.scalars(select(LocalJob).order_by(LocalJob.created_at.desc()).limit(100)).all())
+        jobs = list(
+            session.scalars(
+                select(LocalJob)
+                .where(LocalJob.kind == "post.publish")
+                .order_by(LocalJob.created_at.desc())
+                .limit(100)
+            ).all()
+        )
         paused = session.get(AppMetadata, "scheduler_paused")
         return {
             "workspace": {
@@ -1021,7 +1028,7 @@ def complete_job(job_id: str) -> None:
             action="job.completed",
             entity_type="scheduler",
             entity_id=job.id,
-            summary="Scheduled Telegram publish completed.",
+            summary="Scheduled local job completed.",
         )
 
 
@@ -1043,7 +1050,7 @@ def fail_job(job_id: str, message: str, *, retryable: bool) -> None:
             job.status = "failed"
             job.completed_at = _utc_iso(now)
             action = "job.failed"
-            summary = "Scheduled publish failed and requires local review."
+            summary = "Scheduled local job failed and requires review."
         job.locked_at = None
         job.updated_at = _utc_iso(now)
         job.last_error = message[:2_000]

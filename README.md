@@ -1,6 +1,6 @@
 # LocalGrowth OS
 
-LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.8.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
+LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.9.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
 
 ## What works today
 
@@ -27,9 +27,11 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Record a lead's legal basis, consent state, purpose/evidence note, and retention review date before AI outreach is enabled.
 - Generate editable email drafts with exact revision approval, then export only an approved current revision as CSV; the core never sends outreach.
 - Export a lead and its outreach history as local JSON, filter expired retention reviews, and permanently delete lead data only with a reason plus typed confirmation.
+- Run a robots-aware, SSRF-protected SEO audit with 18 deterministic technical, on-page, content, and social checks.
+- Save derived SEO snapshots and score deltas in SQLite, export a selected report as JSON, and schedule one-off restart-safe audits with the local job worker.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, and X; outreach delivery connectors; rendered-page crawling; and full SEO audits remain roadmap work. Channel names can already be used to generate social drafts, but v0.8 publishes and schedules only to Telegram and verified WordPress sites. Outreach is deliberately export-only and never pretends an email was sent.
+Publishing adapters for LinkedIn, Instagram, Facebook, and X; outreach delivery connectors; rendered-page crawling; Lighthouse/PageSpeed and Search Console adapters; keyword maps; and approved SEO fix proposals remain roadmap work. Channel names can already be used to generate social drafts, but v0.9 publishes and schedules only to Telegram and verified WordPress sites. Outreach is deliberately export-only and never pretends an email was sent.
 
 ## Native localhost run
 
@@ -65,7 +67,9 @@ Open **Lead intelligence** to upload or paste CSV data. Recognized columns inclu
 
 Before qualification, configure the **Ideal customer profile** in Lead intelligence. Saving it deterministically rescales every local lead from 0–100 and new imports are scored immediately. Open any score to see its reason codes and point changes. A manual correction requires a written reason, remains visibly separate from the underlying ICP score, and can be cleared at any time.
 
-Open a lead's **Reviewed outreach** control to record the legal basis, consent state, supporting purpose, and retention review date. Only a non-suppressed lead with an email and a current, internally consistent review can generate an AI email draft. Editing increments the revision and clears approval. An exact approved revision can be downloaded as CSV, while **Data controls** exports the complete lead package as JSON or permanently deletes the local lead and its drafts after typed confirmation. No outreach send connector is included in v0.8.
+Open a lead's **Reviewed outreach** control to record the legal basis, consent state, supporting purpose, and retention review date. Only a non-suppressed lead with an email and a current, internally consistent review can generate an AI email draft. Editing increments the revision and clears approval. An exact approved revision can be downloaded as CSV, while **Data controls** exports the complete lead package as JSON or permanently deletes the local lead and its drafts after typed confirmation. No outreach send connector is included in v0.9.
+
+Open **Local SEO lab** and enter a public website URL to create a deterministic baseline. LocalGrowth checks the HTTP response, indexing directives, mobile viewport, canonical, encoding, response time, title, description, headings, visible copy, image alt coverage, internal links, structured data, and Open Graph fields. It stores only derived metrics, weighted checks, and recommendations—not the page HTML. A future-dated one-off snapshot can be placed in the same restart-safe SQLite worker used by publishing jobs; the SEO screen keeps those read-only jobs separate from publication jobs.
 
 For live business discovery, create a restricted Google Maps API key with Places API (New) enabled, open **Lead intelligence → Connection**, and select **Save & test**. Search results remain transient browser state with Google Maps attribution and are never copied into SQLite. Select **Crawl public site** to inspect the business's own website under its robots rules, review the extracted fields, and explicitly select **Add to vault**. See the local [terms](docs/TERMS.md) and [privacy notice](docs/PRIVACY.md).
 

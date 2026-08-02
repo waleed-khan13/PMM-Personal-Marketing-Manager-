@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Rocket,
   Send,
+  SearchCheck,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -39,6 +40,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { LeadsWorkspace } from "@/components/leads-workspace";
+import { SeoWorkspace } from "@/components/seo-workspace";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,7 +104,7 @@ import {
   type WordPressConnectorForm,
 } from "@/components/wordpress-connector-card";
 
-type ViewId = "command" | "create" | "queue" | "leads" | "scheduler" | "integrations" | "activity";
+type ViewId = "command" | "create" | "queue" | "leads" | "seo" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
 
 type StateResponse = {
@@ -121,6 +123,7 @@ const navigation: NavItem[] = [
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
   { id: "leads", label: "Lead intelligence", icon: UsersRound },
+  { id: "seo", label: "Local SEO lab", icon: SearchCheck },
   { id: "scheduler", label: "Scheduler", icon: Clock3 },
   { id: "integrations", label: "Integrations", icon: PlugZap },
   { id: "activity", label: "Activity", icon: Activity },
@@ -146,6 +149,11 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
     eyebrow: "Permission-aware intelligence",
     title: "Lead intelligence",
     description: "Import, deduplicate, qualify, and suppress business leads in your local database.",
+  },
+  seo: {
+    eyebrow: "Evidence-backed optimization",
+    title: "Local SEO lab",
+    description: "Audit public pages, inspect weighted findings, and keep restart-safe local snapshots.",
   },
   scheduler: {
     eyebrow: "Durable local jobs",
@@ -1488,6 +1496,10 @@ export function GrowthConsole() {
 
           {!loading && appState && activeView === "leads" ? (
             <LeadsWorkspace onStateChange={setAppState} state={appState} />
+          ) : null}
+
+          {!loading && appState && activeView === "seo" ? (
+            <SeoWorkspace schedulerPaused={appState.scheduler.paused} />
           ) : null}
 
           {!loading && appState && activeView === "scheduler" ? (

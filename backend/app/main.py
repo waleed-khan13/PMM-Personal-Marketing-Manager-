@@ -67,14 +67,28 @@ from app.schemas import (
     PublishRequest,
     SchedulePostRequest,
     SchedulerUpdate,
+    SeoAuditRequest,
+    SeoAuditScheduleRequest,
     TelegramUpdate,
     WebsiteCrawlRequest,
     WorkspaceUpdate,
+)
+from app.seo_store import (
+    cancel_seo_job,
+    list_seo_audits,
+    list_seo_jobs,
+    retry_seo_job,
+    save_seo_audit,
+    schedule_seo_audit,
+)
+from app.seo_store import (
+    get_seo_audit as load_seo_audit,
 )
 from app.services.crawler import crawl_website
 from app.services.google_places import search_google_places
 from app.services.provider import generate_content, generate_outreach, test_provider, validate_base_url
 from app.services.publishing import publish_to_target, resolve_publish_target
+from app.services.seo_audit import audit_website
 from app.services.telegram import (
     delete_webhook,
     send_approval_request,
@@ -175,6 +189,50 @@ def health() -> dict[str, Any]:
 @app.get("/api/state")
 def get_state() -> JSONResponse:
     return JSONResponse(state_response(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/seo/audits")
+def get_seo_audits(limit: int = 50) -> JSONResponse:
+    if not 1 <= limit <= 100:
+        raise AppError("SEO audit history limit must be between 1 and 100.")
+    return JSONResponse(list_seo_audits(limit), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/seo/audits/{snapshot_id}")
+def get_seo_audit(snapshot_id: str) -> JSONResponse:
+    return JSONResponse(load_seo_audit(snapshot_id), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/seo/audits")
+async def create_seo_audit(payload: SeoAuditRequest) -> dict[str, object]:
+    result = await audit_website(payload.url)
+    return {"ok": True, "audit": save_seo_audit(result, trigger="manual")}
+
+
+@app.get("/api/seo/jobs")
+def get_seo_schedules(limit: int = 50) -> JSONResponse:
+    if not 1 <= limit <= 100:
+        raise AppError("SEO schedule history limit must be between 1 and 100.")
+    return JSONResponse(list_seo_jobs(limit), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/seo/jobs")
+def create_seo_schedule(payload: SeoAuditScheduleRequest) -> dict[str, object]:
+    job, created = schedule_seo_audit(payload, settings.scheduler_catch_up_hours)
+    local_scheduler.wake()
+    return {"ok": True, "job": job, "created": created}
+
+
+@app.post("/api/seo/jobs/{job_id}/cancel")
+def cancel_seo_schedule(job_id: str) -> dict[str, object]:
+    return {"ok": True, "job": cancel_seo_job(job_id)}
+
+
+@app.post("/api/seo/jobs/{job_id}/retry")
+def retry_seo_schedule(job_id: str) -> dict[str, object]:
+    job = retry_seo_job(job_id)
+    local_scheduler.wake()
+    return {"ok": True, "job": job}
 
 
 @app.get("/api/leads")

@@ -244,7 +244,7 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
                 {"url": "https://acme.example/contact", "title": "Contact"},
             ],
             "robotsRespected": True,
-            "userAgent": "LocalGrowthOS/0.8",
+            "userAgent": "LocalGrowthOS/0.9",
         }
 
     monkeypatch.setattr("app.main.crawl_website", fake_crawl)
@@ -262,6 +262,140 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
     assert "website-crawl" in {item["source"] for item in lead["evidence"]}
     website_evidence = next(item for item in lead["evidence"] if item["source"] == "website-crawl")
     assert website_evidence["sourceLabel"] == "Public website crawl"
+
+
+def test_deterministic_seo_analyzer_scores_real_page_signals() -> None:
+    from app.services.seo_audit import analyze_seo_document
+
+    body_copy = " ".join(["Useful local service information for customers and search visitors."] * 55)
+    html = f"""
+    <!doctype html>
+    <html lang="en"><head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Karachi Website Performance and SEO Reviews</title>
+      <meta name="description" content="A practical website performance and local SEO review for Karachi businesses, with clear evidence and prioritized recommendations.">
+      <link rel="canonical" href="https://audit.example/">
+      <meta property="og:title" content="Karachi Website Reviews">
+      <meta property="og:description" content="Clear and evidence-based website review.">
+      <meta property="og:image" content="https://audit.example/share.jpg">
+      <script type="application/ld+json">{{"@type":"ProfessionalService","name":"Audit Studio"}}</script>
+    </head><body>
+      <h1>Website performance and SEO reviews</h1><h2>What the review covers</h2>
+      <p>{body_copy}</p><img src="report.jpg" alt="Example audit report">
+      <a href="/services">Services</a><a href="/work">Work</a><a href="/about">About</a><a href="/contact">Contact</a>
+    </body></html>
+    """
+    result = analyze_seo_document(
+        requested_url="https://audit.example/",
+        final_url="https://audit.example/",
+        status_code=200,
+        content_type="text/html",
+        headers={"content-type": "text/html; charset=utf-8"},
+        content=html.encode(),
+        duration_ms=240,
+        robots_respected=True,
+    )
+    assert result["overallScore"] >= 90
+    assert result["scores"]["technical"] >= 90
+    assert result["metrics"]["wordCount"] >= 300
+    assert result["metrics"]["imagesMissingAlt"] == 0
+    assert result["metrics"]["structuredDataTypes"] == ["ProfessionalService"]
+    assert all(item["status"] == "passed" for item in result["checks"])
+
+
+def test_persisted_seo_audits_and_restart_safe_schedule(client, monkeypatch) -> None:
+    from app.database import write_session
+    from app.models import LocalJob
+    from app.scheduler import LocalScheduler
+    from app.services.seo_audit import analyze_seo_document
+
+    def result_for(url: str, score_variant: int = 0):
+        description = (
+            "A concise, evidence-based local SEO audit description for business owners and website teams."
+        )
+        html = f"""
+        <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+        <title>Local SEO audit snapshot for example businesses</title>
+        <meta name="description" content="{description}"><link rel="canonical" href="{url}">
+        </head><body><h1>Local SEO audit</h1><h2>Evidence</h2><p>{"useful evidence " * (25 + score_variant)}</p>
+        <a href="/one">One</a><a href="/two">Two</a><a href="/three">Three</a></body></html>
+        """
+        return analyze_seo_document(
+            requested_url=url,
+            final_url=url,
+            status_code=200,
+            content_type="text/html",
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=html.encode(),
+            duration_ms=300,
+            robots_respected=True,
+        )
+
+    async def fake_audit(url: str):
+        assert url == "https://seo-audit.example/"
+        return result_for(url)
+
+    monkeypatch.setattr("app.main.audit_website", fake_audit)
+    created = client.post("/api/seo/audits", json={"url": "https://seo-audit.example/"})
+    assert created.status_code == 200
+    snapshot = created.json()["audit"]
+    assert snapshot["trigger"] == "manual"
+    assert snapshot["previousScore"] is None
+    assert "content" not in snapshot
+    assert "html" not in snapshot
+
+    history = client.get("/api/seo/audits")
+    assert history.status_code == 200
+    assert history.headers["cache-control"] == "no-store"
+    assert history.json()["items"][0]["id"] == snapshot["id"]
+    assert history.json()["summary"]["sites"] >= 1
+    assert client.get(f"/api/seo/audits/{snapshot['id']}").status_code == 200
+
+    run_at = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
+    scheduled = client.post(
+        "/api/seo/jobs",
+        json={"url": "https://seo-audit.example/", "runAt": run_at},
+    )
+    assert scheduled.status_code == 200
+    assert scheduled.json()["created"] is True
+    duplicate = client.post(
+        "/api/seo/jobs",
+        json={"url": "https://seo-audit.example/", "runAt": run_at},
+    )
+    assert duplicate.status_code == 200
+    assert duplicate.json()["created"] is False
+    job_id = scheduled.json()["job"]["id"]
+
+    async def fake_scheduled_audit(url: str):
+        return result_for(url, score_variant=10)
+
+    monkeypatch.setattr("app.scheduler.audit_website", fake_scheduled_audit)
+    with write_session() as session:
+        job = session.get(LocalJob, job_id)
+        assert job is not None
+        job.status = "running"
+        job.attempts = 1
+        job.locked_at = datetime.now(UTC).isoformat()
+    worker = LocalScheduler(interval=1, catch_up_hours=24, stale_minutes=10)
+    asyncio.run(worker._execute(scheduled.json()["job"]))
+
+    jobs = client.get("/api/seo/jobs").json()["items"]
+    completed = next(item for item in jobs if item["id"] == job_id)
+    assert completed["status"] == "completed"
+    latest = client.get("/api/seo/audits").json()["items"][0]
+    assert latest["trigger"] == "scheduled"
+    assert latest["previousScore"] is not None
+    assert all(job["kind"] == "post.publish" for job in client.get("/api/state").json()["jobs"])
+
+    cancel_at = (datetime.now(UTC) + timedelta(hours=3)).isoformat()
+    cancel_job = client.post(
+        "/api/seo/jobs",
+        json={"url": "https://cancel-audit.example/", "runAt": cancel_at},
+    ).json()["job"]
+    cancelled = client.post(f"/api/seo/jobs/{cancel_job['id']}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["job"]["status"] == "cancelled"
 
 
 def test_deterministic_icp_scoring_high_intent_filter_and_manual_correction(client) -> None:

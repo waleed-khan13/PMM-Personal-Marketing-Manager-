@@ -81,6 +81,8 @@ The singleton `icp_profiles` row contains versioned business-fit criteria, never
 
 Outreach eligibility is a separate deterministic gate on the lead row: suppression must be clear, an email must exist, the legal basis and consent state must be compatible, the purpose/evidence note must be present, and the retention review date must be current. The `outreach_drafts` table stores provider provenance, editable subject/body copy, revision, decision state, and approval/export timestamps. Generation rechecks eligibility before and after the provider call. Every edit increments the revision and clears approval. CSV export requires that same approved revision and rechecks eligibility; there is no outreach delivery operation in the core. Per-lead JSON export supports portability, while typed permanent deletion removes the lead, identities, and drafts through SQLite foreign-key cascades and leaves a non-personal audit event.
 
+The Local SEO lab reuses the crawler's URL normalization, public-address validation, same-site redirect, robots, response type, timeout, and size boundaries. The audit fetches one initial HTML response and deterministically evaluates 18 weighted checks across technical, on-page, content, and social categories. `seo_audit_snapshots` stores only the final URL, score, derived metrics, checks, crawler identity, and timing; raw HTML is discarded. Manual runs execute through a dedicated API while future one-off runs use `seo.audit` jobs in the durable SQLite worker. Publication jobs remain the only jobs returned in the global dashboard state, so SEO read-only work cannot be presented as outbound delivery.
+
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.

@@ -51,8 +51,9 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 
 ## Milestone 4 — local SEO lab
 
-- [ ] Lightweight HTTP crawler with Playwright fallback for rendered pages.
-- [ ] Technical/on-page audits and restart-safe scheduled snapshots.
+- [x] Lightweight robots-aware HTTP audits with public-address, redirect, type, size, and timeout controls.
+- [ ] Explicit Playwright fallback for rendered pages.
+- [x] Technical/on-page audits and restart-safe scheduled snapshots.
 - [ ] Search Console and PageSpeed/Lighthouse adapters.
 - [ ] Keyword map, content briefs, internal links, and cited recommendations.
 - [ ] WordPress/Git fix proposals with diff, approval, and rollback.

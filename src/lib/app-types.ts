@@ -9,6 +9,8 @@ export type LeadStatus = "new" | "qualified" | "contacted" | "archived";
 export type ConsentStatus = "unknown" | "granted" | "not_applicable" | "denied" | "withdrawn";
 export type LegalBasis = "consent" | "legitimate_interest" | "existing_customer" | "contract" | "other";
 export type OutreachDraftStatus = "draft" | "approved" | "rejected" | "exported";
+export type SeoCheckStatus = "passed" | "warning" | "failed";
+export type SeoCheckCategory = "technical" | "onPage" | "content" | "social";
 
 export interface WorkspaceSettings {
   name: string;
@@ -63,7 +65,7 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead" | "outreach";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead" | "outreach" | "seo";
   entityId: string;
   summary: string;
   createdAt: string;
@@ -243,6 +245,91 @@ export interface LocalFileExport {
   filename: string;
   mimeType: string;
   content: string;
+}
+
+export interface SeoAuditCheck {
+  code: string;
+  label: string;
+  category: SeoCheckCategory;
+  status: SeoCheckStatus;
+  severity: "info" | "low" | "medium" | "high";
+  evidence: string;
+  recommendation: string;
+  weight: number;
+}
+
+export interface SeoAuditMetrics {
+  title: string;
+  titleLength: number;
+  description: string;
+  descriptionLength: number;
+  canonicalUrl: string;
+  language: string;
+  h1Count: number;
+  h2Count: number;
+  wordCount: number;
+  imageCount: number;
+  imagesMissingAlt: number;
+  internalLinks: number;
+  externalLinks: number;
+  structuredDataTypes: string[];
+  htmlBytes: number;
+  indexable: boolean;
+  passedChecks: number;
+  warningChecks: number;
+  failedChecks: number;
+}
+
+export interface SeoAuditSnapshot {
+  id: string;
+  requestedUrl: string;
+  finalUrl: string;
+  hostname: string;
+  trigger: "manual" | "scheduled";
+  statusCode: number;
+  overallScore: number;
+  previousScore: number | null;
+  scoreDelta: number | null;
+  scores: {
+    technical: number;
+    onPage: number;
+    content: number;
+    social: number;
+  };
+  metrics: SeoAuditMetrics;
+  checks: SeoAuditCheck[];
+  robotsRespected: boolean;
+  userAgent: string;
+  durationMs: number;
+  createdAt: string;
+}
+
+export interface SeoAuditSummary {
+  snapshots: number;
+  sites: number;
+  averageScore: number;
+  openFailures: number;
+  lastAuditAt: string | null;
+}
+
+export interface SeoAuditListResponse {
+  items: SeoAuditSnapshot[];
+  summary: SeoAuditSummary;
+}
+
+export interface SeoAuditJob {
+  id: string;
+  kind: "seo.audit";
+  status: LocalJobStatus;
+  payload: { url: string };
+  runAt: string;
+  attempts: number;
+  maxAttempts: number;
+  lockedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LeadListResponse {

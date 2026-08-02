@@ -5,7 +5,9 @@ from contextlib import suppress
 from typing import Any
 
 from app.errors import AppError
+from app.seo_store import save_seo_audit
 from app.services.publishing import publish_to_target, resolve_publish_target
+from app.services.seo_audit import audit_website
 from app.store import (
     claim_due_job,
     complete_job,
@@ -100,6 +102,19 @@ class LocalScheduler:
 
     async def _execute(self, job: dict[str, Any]) -> None:
         job_id = str(job["id"])
+        if job.get("kind") == "seo.audit":
+            payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+            url = str(payload.get("url") or "")
+            try:
+                result = await audit_website(url)
+                save_seo_audit(result, trigger="scheduled")
+                complete_job(job_id)
+                self._last_error = None
+            except Exception as error:  # noqa: BLE001 - read-only crawl failures are safe to retry.
+                message = error.message if isinstance(error, AppError) else str(error) or "SEO audit failed."
+                fail_job(job_id, message, retryable=True)
+                self._last_error = message
+            return
         if job.get("kind") != "post.publish":
             message = f"Unsupported local job kind: {job.get('kind')}"
             fail_job(job_id, message, retryable=False)

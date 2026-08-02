@@ -202,3 +202,22 @@ class OutreachDraft(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     approved_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     exported_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class SeoAuditSnapshot(Base):
+    __tablename__ = "seo_audit_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    requested_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    final_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False, default="manual", index=True)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    overall_score: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    scores: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False, default=dict)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    checks: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    robots_respected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    user_agent: Mapped[str] = mapped_column(String(255), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)

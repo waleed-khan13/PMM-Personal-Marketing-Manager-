@@ -114,6 +114,22 @@ class WebsiteCrawlRequest(ApiModel):
     url: str = Field(min_length=4, max_length=2_048)
 
 
+class SeoAuditRequest(ApiModel):
+    url: str = Field(min_length=4, max_length=2_048)
+
+
+class SeoAuditScheduleRequest(ApiModel):
+    url: str = Field(min_length=4, max_length=2_048)
+    run_at: datetime
+
+    @field_validator("run_at")
+    @classmethod
+    def require_timezone(cls, run_at: datetime) -> datetime:
+        if run_at.tzinfo is None or run_at.utcoffset() is None:
+            raise ValueError("runAt must include a timezone offset.")
+        return run_at.astimezone(UTC)
+
+
 class LeadStatusUpdate(ApiModel):
     status: Literal["new", "qualified", "contacted", "archived"]
 
