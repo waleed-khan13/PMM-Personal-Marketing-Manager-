@@ -65,7 +65,7 @@ def test_draft_version_approval_and_single_publish(client, monkeypatch) -> None:
         return "telegram-message-42"
 
     monkeypatch.setattr("app.main.generate_content", fake_generate)
-    monkeypatch.setattr("app.main.publish_post", fake_publish)
+    monkeypatch.setattr("app.services.publishing.publish_telegram_post", fake_publish)
 
     generated = client.post(
         "/api/posts/generate",
@@ -168,7 +168,7 @@ def test_durable_scheduler_is_idempotent_and_publishes_after_resume(client, monk
         return "scheduled-message-99"
 
     monkeypatch.setattr("app.main.generate_content", fake_generate)
-    monkeypatch.setattr("app.scheduler.publish_post", fake_publish)
+    monkeypatch.setattr("app.services.publishing.publish_telegram_post", fake_publish)
 
     telegram = client.put(
         "/api/settings/telegram",
@@ -488,3 +488,206 @@ def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch
     removed = client.delete(f"/api/connectors/{account_id}")
     assert removed.status_code == 200
     assert all(item["id"] != account_id for item in removed.json()["state"]["connectors"]["accounts"])
+
+
+def test_wordpress_connector_publishes_exact_approved_blog_revision(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
+    from app.services.wordpress import WordPressPublishResult
+
+    catalog = client.get("/api/connectors").json()["catalog"]
+    manifest = next(item for item in catalog if item["adapterId"] == "wordpress")
+    assert manifest["availability"] == "available"
+    assert manifest["capabilities"] == ["publish", "cms"]
+    assert manifest["requiredScopes"] == ["posts:write"]
+
+    username = "editor"
+    application_password = "abcd efgh ijkl mnop qrst uvwx"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "wordpress",
+            "name": "Company blog",
+            "config": {"site_url": "https://example.com"},
+            "secrets": {
+                "username": username,
+                "application_password": application_password,
+            },
+            "scopes": ["posts:write"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account_id = created.json()["account"]["id"]
+    assert username not in created.text
+    assert application_password not in created.text
+
+    async def fake_wordpress_test(_self, config, secrets):
+        assert config == {"site_url": "https://example.com"}
+        assert secrets == {"username": username, "application_password": application_password}
+        return ConnectorTestResult(
+            ok=True,
+            message="Connected to WordPress as Example Editor.",
+            remote_account_id="7",
+            details={"site": "https://example.com", "user": "Example Editor"},
+        )
+
+    monkeypatch.setattr(
+        "app.connectors.wordpress.WordPressAdapter.test_connection",
+        fake_wordpress_test,
+    )
+    tested = client.post(f"/api/connectors/{account_id}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == "7"
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Approved WordPress title",
+            body="First approved paragraph.\n\nSecond approved paragraph.",
+            hashtags=["#local", "#growth"],
+            rationale="Exercises the official WordPress publisher.",
+        )
+
+    delivered: list[dict] = []
+
+    async def fake_wordpress_publish(site_url, saved_username, saved_password, post):
+        assert site_url == "https://example.com"
+        assert saved_username == username
+        assert saved_password == application_password
+        delivered.append(post)
+        return WordPressPublishResult(
+            remote_id="314",
+            remote_url="https://example.com/approved-wordpress-title/",
+        )
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr("app.services.publishing.publish_wordpress_post", fake_wordpress_publish)
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "WordPress launch",
+            "channel": "blog",
+            "tone": "Clear",
+            "objective": "Publish the approved article",
+            "notifyTelegram": False,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    approved = client.post(
+        f"/api/posts/{post['id']}/decision",
+        json={"decision": "approve", "revision": post["revision"]},
+    )
+    assert approved.status_code == 200
+
+    published = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert published.status_code == 200
+    final_post = next(item for item in published.json()["state"]["posts"] if item["id"] == post["id"])
+    assert final_post["status"] == "published"
+    assert final_post["remoteId"] == "314"
+    assert final_post["remoteUrl"] == "https://example.com/approved-wordpress-title/"
+    assert len(delivered) == 1
+    assert delivered[0]["revision"] == post["revision"]
+    assert delivered[0]["title"] == post["title"]
+    assert delivered[0]["body"] == post["body"]
+    assert delivered[0]["hashtags"] == post["hashtags"]
+
+    duplicate = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert duplicate.status_code == 400
+
+    client.put("/api/scheduler", json={"paused": True})
+    scheduled_post = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Scheduled WordPress article",
+            "channel": "blog",
+            "tone": "Clear",
+            "objective": "Verify the WordPress scheduler dispatch",
+            "notifyTelegram": False,
+        },
+    ).json()["post"]
+    client.post(
+        f"/api/posts/{scheduled_post['id']}/decision",
+        json={"decision": "approve", "revision": scheduled_post["revision"]},
+    )
+    scheduled = client.post(
+        f"/api/posts/{scheduled_post['id']}/schedule",
+        json={
+            "revision": scheduled_post["revision"],
+            "runAt": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        },
+    )
+    assert scheduled.status_code == 200
+    client.put("/api/scheduler", json={"paused": False})
+
+    deadline = time.monotonic() + 3
+    scheduled_state = client.get("/api/state").json()
+    while time.monotonic() < deadline:
+        scheduled_state = client.get("/api/state").json()
+        current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+        if current["status"] == "published":
+            break
+        time.sleep(0.05)
+    current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+    job = next(item for item in scheduled_state["jobs"] if item["id"] == scheduled.json()["job"]["id"])
+    assert current["status"] == "published"
+    assert current["remoteUrl"] == "https://example.com/approved-wordpress-title/"
+    assert job["status"] == "completed"
+    assert len(delivered) == 2
+
+
+def test_wordpress_payload_is_safe_and_remote_sites_require_https(monkeypatch) -> None:
+    import pytest
+
+    from app.errors import ExternalServiceError
+    from app.services.wordpress import publish_wordpress_post, validate_wordpress_site_url
+
+    with pytest.raises(ExternalServiceError, match="HTTPS"):
+        validate_wordpress_site_url("http://example.com")
+    assert validate_wordpress_site_url("http://127.0.0.1:8080/site/") == "http://127.0.0.1:8080/site"
+
+    captured: dict = {}
+
+    async def fake_request(site_url, username, application_password, resource, **kwargs):
+        captured.update(
+            {
+                "site_url": site_url,
+                "username": username,
+                "application_password": application_password,
+                "resource": resource,
+                **kwargs,
+            }
+        )
+        return {"id": 9, "link": "https://example.com/safe-post/"}
+
+    monkeypatch.setattr("app.services.wordpress.wordpress_request", fake_request)
+    result = asyncio.run(
+        publish_wordpress_post(
+            "https://example.com",
+            "editor",
+            "application-password",
+            {
+                "title": "Safe post",
+                "body": "Approved <script>alert('no')</script>\n\nSecond line",
+                "hashtags": ["#approved"],
+            },
+        )
+    )
+    assert result.remote_id == "9"
+    assert result.remote_url == "https://example.com/safe-post/"
+    assert captured["resource"] == "posts"
+    assert captured["method"] == "POST"
+    assert captured["json_body"] == {
+        "title": "Safe post",
+        "content": (
+            "<p>Approved &lt;script&gt;alert(&#x27;no&#x27;)&lt;/script&gt;</p>\n"
+            "<p>Second line</p>\n<p>#approved</p>"
+        ),
+        "status": "publish",
+    }

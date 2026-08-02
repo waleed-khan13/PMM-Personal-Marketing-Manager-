@@ -5,7 +5,7 @@ from contextlib import suppress
 from typing import Any
 
 from app.errors import AppError
-from app.services.telegram import publish_post
+from app.services.publishing import publish_to_target, resolve_publish_target
 from app.store import (
     claim_due_job,
     complete_job,
@@ -16,7 +16,6 @@ from app.store import (
     recover_stale_jobs,
     reserve_publish,
     scheduler_paused,
-    telegram_runtime,
 )
 
 
@@ -110,10 +109,9 @@ class LocalScheduler:
         payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
         post_id = str(payload.get("post_id") or "")
         revision = int(payload.get("revision") or 0)
+        channel = str(payload.get("channel") or "")
         try:
-            telegram = telegram_runtime()
-            if not telegram["bot_token"] or not telegram["chat_id"]:
-                raise AppError("Telegram is not configured; scheduled publish will retry locally.")
+            target = resolve_publish_target(channel)
         except AppError as error:
             fail_job(job_id, error.message, retryable=True)
             self._last_error = error.message
@@ -127,12 +125,8 @@ class LocalScheduler:
             return
 
         try:
-            remote_id = await publish_post(
-                str(telegram["bot_token"]),
-                str(telegram["chat_id"]),
-                reserved,
-            )
-            finish_publish(post_id, revision, remote_id)
+            result = await publish_to_target(target, reserved)
+            finish_publish(post_id, revision, result.remote_id, result.remote_url)
             complete_job(job_id)
             self._last_error = None
         except Exception as error:  # noqa: BLE001 - remote delivery failures may be ambiguous.

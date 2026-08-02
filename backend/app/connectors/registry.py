@@ -4,10 +4,12 @@ from typing import Any
 
 from app.connectors.base import ConnectorAdapter, ConnectorManifest
 from app.connectors.slack import SlackAdapter
+from app.connectors.wordpress import WordPressAdapter
 from app.errors import AppError
 
 _slack = SlackAdapter()
-_adapters: dict[str, ConnectorAdapter] = {"slack": _slack}
+_wordpress = WordPressAdapter()
+_adapters: dict[str, ConnectorAdapter] = {"slack": _slack, "wordpress": _wordpress}
 
 _catalog: tuple[ConnectorManifest, ...] = (
     ConnectorManifest(
@@ -18,6 +20,7 @@ _catalog: tuple[ConnectorManifest, ...] = (
         capabilities=("approval", "notification", "publish"),
     ),
     _slack.manifest,
+    _wordpress.manifest,
     ConnectorManifest(
         adapter_id="meta",
         name="Meta Pages & Instagram",

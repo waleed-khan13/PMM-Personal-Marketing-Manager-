@@ -89,6 +89,7 @@ class Post(Base):
     approved_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     published_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     remote_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    remote_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

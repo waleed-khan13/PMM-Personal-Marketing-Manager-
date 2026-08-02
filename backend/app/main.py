@@ -35,9 +35,9 @@ from app.schemas import (
     WorkspaceUpdate,
 )
 from app.services.provider import generate_content, test_provider, validate_base_url
+from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.telegram import (
     delete_webhook,
-    publish_post,
     send_approval_request,
     test_connection,
 )
@@ -48,6 +48,7 @@ from app.store import (
     decide_post,
     edit_post,
     fail_publish,
+    fail_publish_uncertain,
     finish_publish,
     initialize_storage,
     post_for_approval,
@@ -266,14 +267,16 @@ async def request_slack_approval(post_id: str, payload: ApprovalRequest) -> dict
 async def post_publish(post_id: str, payload: PublishRequest) -> dict[str, Any]:
     reserved = reserve_publish(post_id, payload.revision)
     try:
-        telegram = telegram_runtime()
-        if not telegram["bot_token"] or not telegram["chat_id"]:
-            raise AppError("Connect Telegram before publishing.")
-        remote_id = await publish_post(str(telegram["bot_token"]), str(telegram["chat_id"]), reserved)
-        finish_publish(post_id, payload.revision, remote_id)
+        target = resolve_publish_target(str(reserved["channel"]))
+    except AppError as error:
+        fail_publish(post_id, payload.revision, error.message)
+        raise
+    try:
+        result = await publish_to_target(target, reserved)
+        finish_publish(post_id, payload.revision, result.remote_id, result.remote_url)
     except Exception as error:
         message = error.message if isinstance(error, AppError) else "Publish failed."
-        fail_publish(post_id, payload.revision, message)
+        fail_publish_uncertain(post_id, payload.revision, message)
         raise
     return {"ok": True, "state": state_response()}
 

@@ -28,6 +28,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  SquareArrowOutUpRight,
   TerminalSquare,
   RadioTower,
   X,
@@ -92,6 +93,10 @@ import type {
   PublicAppState,
 } from "@/lib/app-types";
 import { cn } from "@/lib/utils";
+import {
+  WordPressConnectorCard,
+  type WordPressConnectorForm,
+} from "@/components/wordpress-connector-card";
 
 type ViewId = "command" | "create" | "queue" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
@@ -513,6 +518,13 @@ export function GrowthConsole() {
     appToken: "",
     enabled: true,
   });
+  const [wordpressForm, setWordpressForm] = useState<WordPressConnectorForm>({
+    name: "Company blog",
+    siteUrl: "",
+    username: "",
+    applicationPassword: "",
+    enabled: true,
+  });
   const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
@@ -565,6 +577,16 @@ export function GrowthConsole() {
             botToken: "",
             appToken: "",
             enabled: slack.enabled,
+          });
+        }
+        const wordpress = next.connectors.accounts.find((account) => account.adapterId === "wordpress");
+        if (wordpress) {
+          setWordpressForm({
+            name: wordpress.name,
+            siteUrl: String(wordpress.config.site_url ?? ""),
+            username: "",
+            applicationPassword: "",
+            enabled: wordpress.enabled,
           });
         }
       })
@@ -623,8 +645,13 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const wordpressAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "wordpress") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -812,7 +839,7 @@ export function GrowthConsole() {
         body: JSON.stringify({ revision: post.revision }),
       });
       setAppState(response.state);
-      toast.success("Published to Telegram");
+      toast.success(`Published to ${post.channel === "blog" ? "WordPress" : "Telegram"}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Publish failed.");
       await loadState();
@@ -987,23 +1014,87 @@ export function GrowthConsole() {
     }
   }
 
-  async function removeSlackConnector() {
+  async function saveWordPressConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("wordpress-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (wordpressForm.username.trim()) secrets.username = wordpressForm.username.trim();
+      if (wordpressForm.applicationPassword.trim()) {
+        secrets.application_password = wordpressForm.applicationPassword.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        wordpressAccount ? `/api/connectors/${wordpressAccount.id}` : "/api/connectors",
+        {
+          method: wordpressAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "wordpress",
+            name: wordpressForm.name,
+            config: { site_url: wordpressForm.siteUrl },
+            secrets,
+            scopes: ["posts:write"],
+            enabled: wordpressForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setWordpressForm((current) => ({ ...current, username: "", applicationPassword: "" }));
+      if (!quiet) toast.success("WordPress connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the WordPress connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testWordPressConnection() {
+    const accountId = await saveWordPressConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("wordpress-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "WordPress connection test failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeConnector() {
     if (!deleteConnector) return;
-    setBusy("slack-delete");
+    const adapterId = deleteConnector.adapterId;
+    setBusy(`${adapterId}-delete`);
     try {
       const response = await requestJson<StateResponse>(`/api/connectors/${deleteConnector.id}`, { method: "DELETE" });
       setAppState(response.state);
       setDeleteConnector(null);
-      setSlackForm({
-        name: "Slack approvals",
-        approvalChannelId: "",
-        botToken: "",
-        appToken: "",
-        enabled: true,
-      });
-      toast.success("Slack connector removed from this computer");
+      if (adapterId === "slack") {
+        setSlackForm({
+          name: "Slack approvals",
+          approvalChannelId: "",
+          botToken: "",
+          appToken: "",
+          enabled: true,
+        });
+      } else if (adapterId === "wordpress") {
+        setWordpressForm({
+          name: "Company blog",
+          siteUrl: "",
+          username: "",
+          applicationPassword: "",
+          enabled: true,
+        });
+      }
+      toast.success(`${deleteConnector.adapterName} connector removed from this computer`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove the Slack connector.");
+      toast.error(error instanceof Error ? error.message : "Could not remove the connector.");
     } finally {
       setBusy(null);
     }
@@ -1315,6 +1406,8 @@ export function GrowthConsole() {
                         && job.payload.revision === post.revision
                         && ["queued", "retrying", "running"].includes(job.status),
                     );
+                    const publisherReady = post.channel === "telegram"
+                      || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled);
                     return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
@@ -1369,20 +1462,25 @@ export function GrowthConsole() {
                                 <Button disabled={busy === `approve-${post.id}`} onClick={() => void decidePost(post, "approve")} size="sm">{busy === `approve-${post.id}` ? <Loader2 className="animate-spin" /> : <Check />} Approve</Button>
                               </>
                             ) : null}
-                            {post.status === "approved" && post.channel === "telegram" ? (
+                            {post.status === "approved" && publisherReady ? (
                               <>
                                 <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
-                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} Publish now</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : "Publish now"}</Button>
                               </>
                             ) : null}
-                            {post.status === "approved" && post.channel !== "telegram" ? (
+                            {post.status === "approved" && post.channel === "blog" && !publisherReady ? (
+                              <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect WordPress</Button>
+                            ) : null}
+                            {post.status === "approved" && !["telegram", "blog"].includes(post.channel) ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
                             ) : null}
                             {post.status === "publishing" ? (
                               <span className="inline-flex items-center gap-2 rounded-md border border-violet-500/20 px-2.5 py-1.5 text-[11px] text-violet-300"><Loader2 className="size-3 animate-spin" /> Sending safely</span>
                             ) : null}
                             {post.status === "published" && post.remoteId ? (
-                              <span className="font-mono text-[10px] text-emerald-400">remote:{post.remoteId}</span>
+                              post.remoteUrl ? (
+                                <a className="inline-flex items-center gap-1.5 font-mono text-[10px] text-emerald-400 hover:text-emerald-300" href={post.remoteUrl} rel="noreferrer" target="_blank">remote:{post.remoteId}<SquareArrowOutUpRight className="size-3" /></a>
+                              ) : <span className="font-mono text-[10px] text-emerald-400">remote:{post.remoteId}</span>
                             ) : null}
                           </div>
                         </div>
@@ -1627,6 +1725,16 @@ export function GrowthConsole() {
                 </CardContent>
               </Card>
 
+              <WordPressConnectorCard
+                account={wordpressAccount}
+                busy={busy}
+                form={wordpressForm}
+                onChange={(patch) => setWordpressForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => wordpressAccount && setDeleteConnector(wordpressAccount)}
+                onSave={(event) => void saveWordPressConnector(event)}
+                onTest={() => void testWordPressConnection()}
+              />
+
               <div>
                 <div className="mb-3 flex items-end justify-between gap-3">
                   <div><h3 className="text-sm font-medium text-zinc-200">Connector roadmap</h3><p className="mt-1 text-xs text-zinc-600">Availability is reported by the backend adapter registry.</p></div>
@@ -1696,7 +1804,7 @@ export function GrowthConsole() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Schedule approved draft</DialogTitle>
-            <DialogDescription>The durable local worker will publish this exact revision to Telegram.</DialogDescription>
+            <DialogDescription>The durable local worker will publish this exact revision to {scheduleTarget?.channel === "blog" ? "WordPress" : "Telegram"}.</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" id="schedule-draft-form" onSubmit={schedulePost}>
             <div className="rounded-md border border-zinc-900 bg-black p-3">
@@ -1718,13 +1826,13 @@ export function GrowthConsole() {
       <Dialog onOpenChange={(open) => !open && setDeleteConnector(null)} open={Boolean(deleteConnector)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Remove Slack connector?</DialogTitle>
-            <DialogDescription>This deletes the connection and its encrypted bot and app tokens from this computer. It does not change your Slack app.</DialogDescription>
+            <DialogTitle>Remove {deleteConnector?.adapterName} connector?</DialogTitle>
+            <DialogDescription>This deletes the connection and its encrypted credentials from this computer. It does not change the remote service.</DialogDescription>
           </DialogHeader>
           <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-200">This local deletion cannot be undone. You can reconnect later with fresh tokens.</div>
           <DialogFooter className="border-zinc-800 bg-[#090909]">
-            <Button disabled={busy === "slack-delete"} onClick={() => setDeleteConnector(null)} type="button" variant="ghost">Cancel</Button>
-            <Button disabled={busy === "slack-delete"} onClick={() => void removeSlackConnector()} type="button" variant="destructive">{busy === "slack-delete" ? <Loader2 className="animate-spin" /> : <X />} Remove locally</Button>
+            <Button disabled={busy === `${deleteConnector?.adapterId}-delete`} onClick={() => setDeleteConnector(null)} type="button" variant="ghost">Cancel</Button>
+            <Button disabled={busy === `${deleteConnector?.adapterId}-delete`} onClick={() => void removeConnector()} type="button" variant="destructive">{busy === `${deleteConnector?.adapterId}-delete` ? <Loader2 className="animate-spin" /> : <X />} Remove locally</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

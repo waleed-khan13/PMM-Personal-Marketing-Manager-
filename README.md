@@ -1,6 +1,6 @@
 # LocalGrowth OS
 
-LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.3.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
+LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.4.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
 
 ## What works today
 
@@ -15,9 +15,11 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Schedule approved Telegram revisions with a restart-safe SQLite job queue, pause/resume, catch-up, cancellation, and reviewed retries.
 - Save a scoped Slack connector in the local vault and verify its bot identity and Socket Mode app token against Slack's real API.
 - Send revision-bound Slack approval buttons and receive approve/reject decisions through an outbound-only Socket Mode listener.
+- Save and verify a WordPress connector with encrypted Application Password credentials.
+- Publish or schedule an exact approved Blog revision through the official WordPress REST API and retain its remote post link.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, X, and blogs; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.3 publishes and schedules only to Telegram and never pretends an unavailable integration succeeded.
+Publishing adapters for LinkedIn, Instagram, Facebook, and X; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.4 publishes and schedules only to Telegram and verified WordPress sites and never pretends an unavailable integration succeeded.
 
 ## Native localhost run
 
@@ -46,6 +48,8 @@ Complete the checklist in the dashboard:
 6. Publish immediately or schedule the exact approved revision from the local queue.
 
 Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
+
+For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. LocalGrowth stores the returned WordPress post ID and link in local state and the audit trail.
 
 For a production-mode native run:
 
@@ -106,7 +110,7 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram/Slack listeners, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
 - `backend/tests` — local API, connector-vault redaction, encryption, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.

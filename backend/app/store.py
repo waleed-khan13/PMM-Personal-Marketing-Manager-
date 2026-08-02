@@ -9,6 +9,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app import __version__
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret, serialize_legacy_secret
 from app.database import read_session, run_migrations, write_session
@@ -23,6 +24,12 @@ from app.models import (
     Workspace,
 )
 from app.schemas import EditPostRequest, ProviderUpdate, SchedulePostRequest, TelegramUpdate, WorkspaceUpdate
+
+PUBLISHER_NAMES = {"telegram": "Telegram", "blog": "WordPress"}
+
+
+def publisher_name(channel: str) -> str:
+    return PUBLISHER_NAMES.get(channel, channel.title())
 
 
 def utc_now() -> str:
@@ -162,6 +169,7 @@ def _import_legacy_json(session: Session, path: Path) -> None:
                 approved_at=_text(raw_post.get("approvedAt"), 40) or None,
                 published_at=_text(raw_post.get("publishedAt"), 40) or None,
                 remote_id=_text(raw_post.get("remoteId"), 255) or None,
+                remote_url=_text(raw_post.get("remoteUrl"), 2_048) or None,
                 last_error=_text(raw_post.get("lastError"), 2_000) or None,
             )
         )
@@ -252,6 +260,7 @@ def _post_dict(post: Post) -> dict[str, Any]:
         "approvedAt": post.approved_at,
         "publishedAt": post.published_at,
         "remoteId": post.remote_id,
+        "remoteUrl": post.remote_url,
         "lastError": post.last_error,
     }
 
@@ -337,7 +346,7 @@ def public_state(
                 for event in audit
             ],
             "runtime": {
-                "version": "0.3.0",
+                "version": __version__,
                 "mode": "local_only",
                 "persistent": True,
                 "database": "sqlite",
@@ -477,6 +486,7 @@ def create_post(*, request: dict[str, Any], content: dict[str, Any], provider: d
         approved_at=None,
         published_at=None,
         remote_id=None,
+        remote_url=None,
         last_error=None,
     )
     with write_session() as session:
@@ -534,6 +544,7 @@ def edit_post(post_id: str, payload: EditPostRequest) -> None:
         post.approved_at = None
         post.published_at = None
         post.remote_id = None
+        post.remote_url = None
         post.updated_at = utc_now()
         post.last_error = None
         _cancel_pending_post_jobs(session, post.id, "Draft edited; scheduled publish cancelled.")
@@ -637,8 +648,9 @@ def reserve_publish(post_id: str, revision: int) -> dict[str, Any]:
             raise AppError("This draft changed. Review the latest revision before publishing.")
         if post.status != "approved":
             raise AppError("Approve this exact draft version before publishing.")
-        if post.channel != "telegram":
-            raise AppError(f"{post.channel} publisher is not installed yet. Telegram publishing is available now.")
+        if post.channel not in PUBLISHER_NAMES:
+            raise AppError(f"{post.channel} publisher is not installed yet.")
+        publisher = publisher_name(post.channel)
         post.status = "publishing"
         post.updated_at = utc_now()
         post.last_error = None
@@ -648,12 +660,17 @@ def reserve_publish(post_id: str, revision: int) -> dict[str, Any]:
             action="post.publish_reserved",
             entity_type="publisher",
             entity_id=post.id,
-            summary=f"Telegram publish reserved for revision {post.revision}.",
+            summary=f"{publisher} publish reserved for revision {post.revision}.",
         )
         return snapshot
 
 
-def finish_publish(post_id: str, revision: int, remote_id: str) -> None:
+def finish_publish(
+    post_id: str,
+    revision: int,
+    remote_id: str,
+    remote_url: str | None = None,
+) -> None:
     with write_session() as session:
         post = session.get(Post, post_id)
         if post is None or post.revision != revision or post.status != "publishing":
@@ -662,6 +679,7 @@ def finish_publish(post_id: str, revision: int, remote_id: str) -> None:
         post.published_at = utc_now()
         post.updated_at = post.published_at
         post.remote_id = remote_id
+        post.remote_url = remote_url[:2_048] if remote_url else None
         post.last_error = None
         _cancel_pending_post_jobs(session, post.id, "Draft already published; redundant job cancelled.")
         _append_audit(
@@ -669,7 +687,10 @@ def finish_publish(post_id: str, revision: int, remote_id: str) -> None:
             action="post.published",
             entity_type="publisher",
             entity_id=post.id,
-            summary=f"Revision {post.revision} published to Telegram as message {remote_id}.",
+            summary=(
+                f"Revision {post.revision} published to {publisher_name(post.channel)} "
+                f"as remote item {remote_id}."
+            ),
         )
 
 
@@ -686,7 +707,7 @@ def fail_publish(post_id: str, revision: int, message: str) -> None:
             action="post.publish_failed",
             entity_type="publisher",
             entity_id=post.id,
-            summary=f"Telegram publish failed for revision {post.revision}.",
+            summary=f"{publisher_name(post.channel)} publish failed for revision {post.revision}.",
         )
 
 
@@ -703,7 +724,10 @@ def fail_publish_uncertain(post_id: str, revision: int, message: str) -> None:
             action="post.publish_uncertain",
             entity_type="publisher",
             entity_id=post.id,
-            summary="Scheduled Telegram delivery failed after reservation; automatic retry was blocked to prevent duplicates.",
+            summary=(
+                f"{publisher_name(post.channel)} delivery failed after reservation; automatic retry was "
+                "blocked to prevent duplicates."
+            ),
         )
 
 
@@ -766,8 +790,9 @@ def schedule_post(post_id: str, payload: SchedulePostRequest, catch_up_hours: in
             raise AppError("This draft changed. Review the latest revision before scheduling.")
         if post.status != "approved":
             raise AppError("Approve this exact draft version before scheduling.")
-        if post.channel != "telegram":
-            raise AppError(f"{post.channel} scheduler is not installed yet. Telegram scheduling is available now.")
+        if post.channel not in PUBLISHER_NAMES:
+            raise AppError(f"{post.channel} scheduler is not installed yet.")
+        publisher = publisher_name(post.channel)
         created_at = utc_now()
         job = LocalJob(
             id=str(uuid4()),
@@ -790,7 +815,7 @@ def schedule_post(post_id: str, payload: SchedulePostRequest, catch_up_hours: in
             action="job.scheduled",
             entity_type="scheduler",
             entity_id=job.id,
-            summary=f"Telegram publish scheduled for revision {post.revision} at {job.run_at}.",
+            summary=f"{publisher} publish scheduled for revision {post.revision} at {job.run_at}.",
         )
         session.flush()
         return _job_dict(job), True

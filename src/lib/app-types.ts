@@ -51,6 +51,7 @@ export interface GeneratedPost {
   approvedAt: string | null;
   publishedAt: string | null;
   remoteId: string | null;
+  remoteUrl: string | null;
   lastError: string | null;
 }
 

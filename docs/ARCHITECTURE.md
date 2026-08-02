@@ -65,13 +65,14 @@ Trigger (schedule / UI / local connector listener)
 
 The connector action never consumes free-form model output directly. Every payload is parsed into a versioned schema, validated, policy-checked, and frozen when submitted for approval. Editing after approval creates a new revision and invalidates the previous decision.
 
-The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly requeue it.
+The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram or WordPress delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly review it before another attempt.
 
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.
 - Telegram uses `getUpdates` long polling from the local worker; a public webhook is neither requested nor required.
 - Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. Verified, enabled accounts run a supervised Socket Mode connection; every envelope is acknowledged before a configured-channel, revision-bound decision is applied.
+- WordPress uses the official REST API with an operator-created Application Password. Remote sites require HTTPS, credentials remain encrypted locally, and approved Blog revisions can publish immediately or through the durable scheduler.
 - Connectors that mandate a public inbound webhook, including interactive WhatsApp Cloud callbacks, are notification-only or optional in strict localhost mode.
 
 ## Adapter families
