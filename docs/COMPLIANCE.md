@@ -40,6 +40,16 @@ References:
 
 Version 0.6 implements identified sequential crawling, public-address validation, same-domain redirect enforcement, robots rules and crawl delay, strict time/size/content limits, contact-page selection, source URLs, and suppression. General lead export/deletion and a configurable operator contact URL remain roadmap work.
 
+## Lead qualification
+
+- Use business-fit signals such as published service keywords, target geography, website availability, and direct business contact fields.
+- Do not score protected or sensitive personal traits, inferred vulnerability, health status, political views, religion, or similarly sensitive attributes.
+- Show every deterministic reason code and point change rather than presenting an unexplained AI prediction.
+- Keep human corrections separate from the computed score, require a written reason, and audit both correction and reset actions.
+- Treat the score as workflow prioritization, not proof of consent or a legal basis for outreach.
+
+Version 0.7 implements local deterministic ICP profiles, full-vault rescoring, explanation history for the current profile version, high-intent filtering, and auditable manual correction. It makes no automated outreach decision.
+
 ## Outreach
 
 - The core creates drafts; bulk send is not enabled by default.

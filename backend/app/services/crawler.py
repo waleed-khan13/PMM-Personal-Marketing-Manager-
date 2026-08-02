@@ -16,7 +16,7 @@ from app.errors import AppError, ExternalServiceError
 
 USER_AGENT_TOKEN = "LocalGrowthOS"
 USER_AGENT = (
-    "LocalGrowthOS/0.6 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
+    "LocalGrowthOS/0.7 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
 )
 MAX_PAGE_BYTES = 1_000_000
 MAX_PAGES = 4

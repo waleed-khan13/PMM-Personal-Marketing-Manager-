@@ -139,6 +139,13 @@ class Lead(Base):
     suppressed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     suppression_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     suppressed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    icp_score: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    icp_reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    icp_profile_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    icp_scored_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    manual_score: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    manual_score_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    manual_score_updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
 
@@ -153,3 +160,17 @@ class LeadIdentity(Base):
     )
     kind: Mapped[str] = mapped_column(String(30), nullable=False)
     value: Mapped[str] = mapped_column(String(512), nullable=False)
+
+
+class IcpProfile(Base):
+    __tablename__ = "icp_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="Primary ICP")
+    target_keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    excluded_keywords: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    target_locations: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    require_website: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    require_contact: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)

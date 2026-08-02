@@ -20,11 +20,15 @@ from app.connector_store import (
 from app.connectors.service import send_saved_slack_approval, test_saved_connector
 from app.errors import AppError, ExternalServiceError
 from app.lead_store import (
+    clear_lead_score_override,
+    icp_profile_state,
     import_leads,
     lead_summary,
     list_leads,
     restore_lead,
+    save_icp_profile,
     suppress_lead,
+    update_lead_score_override,
     update_lead_status,
 )
 from app.poller import TelegramPoller
@@ -36,7 +40,9 @@ from app.schemas import (
     EditPostRequest,
     GeneratePostRequest,
     GooglePlacesSearchRequest,
+    IcpProfileUpdate,
     LeadImportRequest,
+    LeadScoreOverrideUpdate,
     LeadStatusUpdate,
     LeadSuppressionUpdate,
     PollingUpdate,
@@ -134,6 +140,7 @@ def state_response() -> dict[str, Any]:
     state = public_state(telegram_poller.status(), local_scheduler.status())
     state["connectors"] = public_connector_state(slack_listener.statuses())
     state["leadSummary"] = lead_summary()
+    state["icpProfile"] = icp_profile_state()
     return state
 
 
@@ -160,7 +167,15 @@ def get_leads(
     limit: int = 200,
     offset: int = 0,
 ) -> dict[str, object]:
-    allowed_statuses = {"active", "new", "qualified", "contacted", "archived", "suppressed"}
+    allowed_statuses = {
+        "active",
+        "high-intent",
+        "new",
+        "qualified",
+        "contacted",
+        "archived",
+        "suppressed",
+    }
     if status not in allowed_statuses:
         raise AppError("Unknown lead status filter.")
     if not 1 <= limit <= 500 or offset < 0:
@@ -172,6 +187,12 @@ def get_leads(
 def create_lead_import(payload: LeadImportRequest) -> dict[str, Any]:
     result = import_leads(payload)
     return {"ok": True, "result": result, "state": state_response()}
+
+
+@app.put("/api/leads/icp-profile")
+def update_icp_profile(payload: IcpProfileUpdate) -> dict[str, Any]:
+    result = save_icp_profile(payload)
+    return {"ok": True, **result, "state": state_response()}
 
 
 @app.post("/api/leads/discover/google-places")
@@ -219,6 +240,20 @@ def create_lead_suppression(lead_id: str, payload: LeadSuppressionUpdate) -> dic
 @app.post("/api/leads/{lead_id}/restore")
 def remove_lead_suppression(lead_id: str) -> dict[str, Any]:
     lead = restore_lead(lead_id)
+    return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.put("/api/leads/{lead_id}/score-override")
+def save_lead_score_override(
+    lead_id: str, payload: LeadScoreOverrideUpdate
+) -> dict[str, Any]:
+    lead = update_lead_score_override(lead_id, payload)
+    return {"ok": True, "lead": lead, "state": state_response()}
+
+
+@app.delete("/api/leads/{lead_id}/score-override")
+def delete_lead_score_override(lead_id: str) -> dict[str, Any]:
+    lead = clear_lead_score_override(lead_id)
     return {"ok": True, "lead": lead, "state": state_response()}
 
 

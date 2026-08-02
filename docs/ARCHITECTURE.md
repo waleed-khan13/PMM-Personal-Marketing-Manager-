@@ -77,6 +77,8 @@ Google Places discovery uses the official Text Search (New) endpoint through an 
 
 The static website crawler resolves every request and redirect target before connecting and rejects non-public IP addresses, credentials, unsupported schemes, cross-domain redirects, oversized bodies, and non-HTML pages. It identifies itself, reads `robots.txt`, uses the declared crawl delay or a conservative default, serializes local crawl jobs, and visits at most four same-site homepage/contact/about pages. The extracted preview is no-store and reaches SQLite only after the operator explicitly imports it.
 
+The singleton `icp_profiles` row contains versioned business-fit criteria, never model prompts or sensitive-trait rules. Saving a profile applies a deterministic 0–100 function to every lead in one local transaction. Each score stores its profile version, timestamp, and structured reason codes with signed point changes. New and merged imports use the current profile immediately. The high-intent view uses the effective score, while a manual correction is stored separately with a required reason so the original rule score and explanation remain available. Profile changes refresh the rule score but do not silently discard a human correction.
+
 ## Local approval transports
 
 - Dashboard decisions are always available and require no external callback.

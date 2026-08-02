@@ -5,22 +5,25 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Globe2,
+  Gauge,
   Loader2,
   Mail,
   MapPin,
   Phone,
+  PencilLine,
   RefreshCw,
   Search,
   ShieldAlert,
   ShieldCheck,
+  Target,
   Upload,
-  UserRoundCheck,
   UsersRound,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { LeadDiscoveryPanel } from "@/components/lead-discovery-panel";
+import { IcpScoringPanel } from "@/components/icp-scoring-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,11 +52,12 @@ import type {
 import { parseLeadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
-type LeadFilter = "active" | LeadStatus | "suppressed";
+type LeadFilter = "active" | "high-intent" | LeadStatus | "suppressed";
 type ImportLeadSource = Exclude<LeadSource, "website-crawl">;
 
 const filters: Array<{ value: LeadFilter; label: string }> = [
   { value: "active", label: "All active" },
+  { value: "high-intent", label: "High intent (70+)" },
   { value: "new", label: "New" },
   { value: "qualified", label: "Qualified" },
   { value: "contacted", label: "Contacted" },
@@ -90,6 +94,32 @@ function LeadStatusBadge({ lead }: { lead: Lead }) {
     return <Badge className="border-red-500/25 bg-red-500/8 text-red-300" variant="outline">Suppressed</Badge>;
   }
   return <Badge className={cn("capitalize", statusStyles[lead.status])} variant="outline">{lead.status}</Badge>;
+}
+
+function scoreBand(score: number | null) {
+  if (score === null) return { label: "Unscored", style: "border-zinc-800 bg-black text-zinc-600" };
+  if (score >= 70) return { label: "High", style: "border-emerald-500/25 bg-emerald-500/8 text-emerald-300" };
+  if (score >= 40) return { label: "Review", style: "border-amber-500/25 bg-amber-500/8 text-amber-300" };
+  return { label: "Low", style: "border-red-500/25 bg-red-500/8 text-red-300" };
+}
+
+function LeadScoreButton({ lead, onClick }: { lead: Lead; onClick: () => void }) {
+  const band = scoreBand(lead.effectiveScore);
+  return (
+    <button
+      aria-label={`Review ${lead.businessName || "lead"} score`}
+      className="group inline-flex min-h-9 flex-col justify-center rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+      onClick={onClick}
+      type="button"
+    >
+      <Badge className={cn("gap-1.5 font-mono group-hover:border-zinc-500", band.style)} variant="outline">
+        <Gauge className="size-3" />
+        {lead.effectiveScore ?? "—"}
+        <span className="font-sans text-[9px] tracking-wide uppercase">{band.label}</span>
+      </Badge>
+      {lead.manualScore !== null ? <span className="mt-1 block text-[9px] text-zinc-600">Human corrected</span> : null}
+    </button>
+  );
 }
 
 function SummaryCard({ icon: Icon, label, value, detail }: { icon: typeof UsersRound; label: string; value: number; detail: string }) {
@@ -136,6 +166,9 @@ export function LeadsWorkspace({
   const [source, setSource] = useState<ImportLeadSource>("csv");
   const [suppressionTarget, setSuppressionTarget] = useState<Lead | null>(null);
   const [suppressionReason, setSuppressionReason] = useState("");
+  const [scoreTarget, setScoreTarget] = useState<Lead | null>(null);
+  const [scoreValue, setScoreValue] = useState("");
+  const [scoreReason, setScoreReason] = useState("");
   const preview = useMemo(() => parseLeadCsv(csvText), [csvText]);
 
   const loadLeads = useCallback(async () => {
@@ -242,14 +275,70 @@ export function LeadsWorkspace({
     }
   }
 
+  function openScoreCorrection(lead: Lead) {
+    setScoreTarget(lead);
+    setScoreValue(String(lead.effectiveScore ?? 50));
+    setScoreReason(lead.manualScoreReason ?? "");
+  }
+
+  async function saveScoreCorrection(event: FormEvent) {
+    event.preventDefault();
+    if (!scoreTarget) return;
+    const score = Number(scoreValue);
+    if (!Number.isInteger(score) || score < 0 || score > 100) {
+      toast.error("Score must be a whole number from 0 to 100.");
+      return;
+    }
+    setBusy(`score-${scoreTarget.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; lead: Lead; state: PublicAppState }>(`/api/leads/${scoreTarget.id}/score-override`, {
+        method: "PUT",
+        body: JSON.stringify({ score, reason: scoreReason }),
+      });
+      onStateChange(response.state);
+      setScoreTarget(null);
+      setScoreReason("");
+      await loadLeads();
+      toast.success("Human score correction saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not correct the score.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function clearScoreCorrection() {
+    if (!scoreTarget) return;
+    setBusy(`score-${scoreTarget.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; lead: Lead; state: PublicAppState }>(`/api/leads/${scoreTarget.id}/score-override`, { method: "DELETE" });
+      onStateChange(response.state);
+      setScoreTarget(null);
+      setScoreReason("");
+      await loadLeads();
+      toast.success("Deterministic ICP score restored");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not clear the correction.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <SummaryCard detail="Stored on this computer" icon={UsersRound} label="Total leads" value={state.leadSummary.total} />
         <SummaryCard detail="Ready for qualification" icon={Building2} label="Active" value={state.leadSummary.active} />
-        <SummaryCard detail="Marked as a fit" icon={UserRoundCheck} label="Qualified" value={state.leadSummary.qualified} />
+        <SummaryCard detail="ICP score of 70 or higher" icon={Target} label="High intent" value={state.leadSummary.highIntent} />
         <SummaryCard detail="Never reactivated by import" icon={ShieldCheck} label="Suppressed" value={state.leadSummary.suppressed} />
       </div>
+
+      <IcpScoringPanel
+        key={`icp-profile-${state.icpProfile.version}`}
+        onRescored={loadLeads}
+        onStateChange={onStateChange}
+        profile={state.icpProfile}
+      />
 
       <LeadDiscoveryPanel
         onImported={async () => {
@@ -361,7 +450,7 @@ export function LeadsWorkspace({
                 <>
                   <div className="hidden md:block">
                     <Table>
-                      <TableHeader><TableRow className="border-zinc-900 hover:bg-transparent"><TableHead className="px-5 text-[10px] tracking-wider text-zinc-600 uppercase">Lead</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Contact</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Evidence</TableHead><TableHead className="pr-5 text-right text-[10px] tracking-wider text-zinc-600 uppercase">Control</TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow className="border-zinc-900 hover:bg-transparent"><TableHead className="px-5 text-[10px] tracking-wider text-zinc-600 uppercase">Lead</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Contact</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">ICP score</TableHead><TableHead className="text-[10px] tracking-wider text-zinc-600 uppercase">Evidence</TableHead><TableHead className="pr-5 text-right text-[10px] tracking-wider text-zinc-600 uppercase">Control</TableHead></TableRow></TableHeader>
                       <TableBody>
                         {list.items.map((lead) => (
                           <TableRow className="border-zinc-900 hover:bg-zinc-950" key={lead.id}>
@@ -371,6 +460,7 @@ export function LeadsWorkspace({
                               <div className="mt-2"><LeadStatusBadge lead={lead} /></div>
                             </TableCell>
                             <TableCell className="max-w-64 whitespace-normal"><LeadContact lead={lead} /></TableCell>
+                            <TableCell><LeadScoreButton lead={lead} onClick={() => openScoreCorrection(lead)} /></TableCell>
                             <TableCell>
                               <Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">{lead.sourceLabel}</Badge>
                               <p className="mt-1.5 text-[10px] text-zinc-700">{lead.evidence.length} source record{lead.evidence.length === 1 ? "" : "s"}</p>
@@ -398,6 +488,7 @@ export function LeadsWorkspace({
                       <div className="space-y-3 p-4" key={lead.id}>
                         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-xs font-medium text-zinc-200">{lead.businessName || lead.email || lead.website || "Unnamed lead"}</p>{lead.location ? <p className="mt-1 text-[11px] text-zinc-600">{lead.location}</p> : null}</div><LeadStatusBadge lead={lead} /></div>
                         <LeadContact lead={lead} />
+                        <div className="flex items-center justify-between gap-3"><span className="text-[10px] tracking-wider text-zinc-700 uppercase">ICP fit</span><LeadScoreButton lead={lead} onClick={() => openScoreCorrection(lead)} /></div>
                         <div className="flex items-center justify-between gap-3"><Badge className="border-zinc-800 bg-black text-zinc-500" variant="outline">{lead.sourceLabel}</Badge><span className="text-[10px] text-zinc-700">{lead.evidence.length} source record{lead.evidence.length === 1 ? "" : "s"}</span></div>
                         <div className="flex items-center justify-between gap-3 border-t border-zinc-900 pt-3">
                           {lead.suppressed ? (
@@ -432,6 +523,62 @@ export function LeadsWorkspace({
             <div className="my-5 space-y-2"><Label htmlFor="suppression-reason">Reason</Label><Textarea id="suppression-reason" maxLength={500} onChange={(event) => setSuppressionReason(event.target.value)} placeholder="Example: Contact opted out" required value={suppressionReason} /></div>
             <DialogFooter><Button onClick={() => setSuppressionTarget(null)} type="button" variant="outline">Cancel</Button><Button disabled={!suppressionReason.trim() || busy?.startsWith("suppress-")} type="submit" variant="destructive">{busy?.startsWith("suppress-") ? <Loader2 className="animate-spin" /> : <ShieldAlert />}Suppress lead</Button></DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => { if (!open) { setScoreTarget(null); setScoreReason(""); } }} open={Boolean(scoreTarget)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          {scoreTarget ? (
+            <form onSubmit={saveScoreCorrection}>
+              <DialogHeader>
+                <DialogTitle>Review ICP score</DialogTitle>
+                <DialogDescription>
+                  {scoreTarget.businessName || scoreTarget.email || "This lead"} has an effective score of {scoreTarget.effectiveScore ?? "not scored"}. Deterministic evidence stays visible after a human correction.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="my-5 space-y-4">
+                <div className="flex items-center justify-between rounded-md border border-zinc-800 bg-black p-3">
+                  <div>
+                    <p className="text-[10px] tracking-wider text-zinc-600 uppercase">Deterministic score</p>
+                    <p className="mt-1 font-mono text-2xl text-zinc-100">{scoreTarget.icpScore ?? "—"}<span className="text-xs text-zinc-600"> / 100</span></p>
+                  </div>
+                  {scoreTarget.manualScore !== null ? <Badge className="border-sky-500/25 bg-sky-500/8 text-sky-300" variant="outline"><PencilLine className="size-3" />Human correction: {scoreTarget.manualScore}</Badge> : <Badge className={scoreBand(scoreTarget.icpScore).style} variant="outline">{scoreBand(scoreTarget.icpScore).label}</Badge>}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] tracking-wider text-zinc-600 uppercase">Point-by-point explanation</p>
+                  {scoreTarget.icpReasons.length > 0 ? (
+                    <div className="divide-y divide-zinc-900 overflow-hidden rounded-md border border-zinc-800 bg-black">
+                      {scoreTarget.icpReasons.map((reason) => (
+                        <div className="grid grid-cols-[48px_1fr] gap-3 px-3 py-2.5" key={reason.code}>
+                          <span className={cn("font-mono text-xs tabular-nums", reason.points > 0 ? "text-emerald-400" : reason.points < 0 ? "text-red-300" : "text-zinc-500")}>{reason.points > 0 ? "+" : ""}{reason.points}</span>
+                          <div><p className="text-xs font-medium text-zinc-300">{reason.label}</p><p className="mt-0.5 text-[10px] leading-4 text-zinc-600">{reason.detail}</p></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="rounded-md border border-dashed border-zinc-800 bg-black p-4 text-xs text-zinc-600">Activate an ICP profile to generate the deterministic breakdown.</p>}
+                </div>
+
+                <div className="grid gap-4 border-t border-zinc-900 pt-4 sm:grid-cols-[120px_1fr]">
+                  <div className="space-y-2">
+                    <Label htmlFor="lead-score-correction">Corrected score <span aria-hidden="true" className="text-zinc-500">*</span></Label>
+                    <Input id="lead-score-correction" inputMode="numeric" max={100} min={0} onChange={(event) => setScoreValue(event.target.value)} required type="number" value={scoreValue} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lead-score-reason">Correction reason <span aria-hidden="true" className="text-zinc-500">*</span></Label>
+                    <Textarea id="lead-score-reason" maxLength={500} minLength={3} onChange={(event) => setScoreReason(event.target.value)} placeholder="What verified evidence makes the rule-based score inaccurate?" required value={scoreReason} />
+                  </div>
+                </div>
+                <p className="text-[10px] leading-4 text-zinc-600">Corrections are local, auditable, and never erase the original score or its reasons.</p>
+              </div>
+
+              <DialogFooter className="sm:justify-between">
+                <div>{scoreTarget.manualScore !== null ? <Button disabled={busy === `score-${scoreTarget.id}`} onClick={() => void clearScoreCorrection()} type="button" variant="ghost"><RefreshCw />Restore rule score</Button> : null}</div>
+                <div className="flex gap-2"><Button onClick={() => setScoreTarget(null)} type="button" variant="outline">Cancel</Button><Button disabled={scoreReason.trim().length < 3 || busy === `score-${scoreTarget.id}`} type="submit">{busy === `score-${scoreTarget.id}` ? <Loader2 className="animate-spin" /> : <PencilLine />}Save correction</Button></div>
+              </DialogFooter>
+            </form>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

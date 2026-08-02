@@ -17,6 +17,7 @@ from app.errors import AppError
 from app.models import (
     AppMetadata,
     AuditEvent,
+    IcpProfile,
     LocalJob,
     Post,
     ProviderSettings,
@@ -84,6 +85,20 @@ def _ensure_singletons(session: Session) -> None:
                 bot_token=None,
                 polling_enabled=False,
                 last_update_id=0,
+                updated_at=None,
+            )
+        )
+    if session.get(IcpProfile, 1) is None:
+        session.add(
+            IcpProfile(
+                id=1,
+                name="Primary ICP",
+                target_keywords=[],
+                excluded_keywords=[],
+                target_locations=[],
+                require_website=False,
+                require_contact=False,
+                version=0,
                 updated_at=None,
             )
         )

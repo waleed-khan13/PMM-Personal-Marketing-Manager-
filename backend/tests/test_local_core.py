@@ -244,7 +244,7 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
                 {"url": "https://acme.example/contact", "title": "Contact"},
             ],
             "robotsRespected": True,
-            "userAgent": "LocalGrowthOS/0.6",
+            "userAgent": "LocalGrowthOS/0.7",
         }
 
     monkeypatch.setattr("app.main.crawl_website", fake_crawl)
@@ -262,6 +262,101 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
     assert "website-crawl" in {item["source"] for item in lead["evidence"]}
     website_evidence = next(item for item in lead["evidence"] if item["source"] == "website-crawl")
     assert website_evidence["sourceLabel"] == "Public website crawl"
+
+
+def test_deterministic_icp_scoring_high_intent_filter_and_manual_correction(client) -> None:
+    invalid = client.put(
+        "/api/leads/icp-profile",
+        json={"name": "Empty ICP", "targetKeywords": [], "targetLocations": []},
+    )
+    assert invalid.status_code == 422
+
+    saved = client.put(
+        "/api/leads/icp-profile",
+        json={
+            "name": "Lahore dental practices",
+            "targetKeywords": ["dental"],
+            "excludedKeywords": ["university"],
+            "targetLocations": ["Lahore"],
+            "requireWebsite": True,
+            "requireContact": True,
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["rescored"] >= 1
+    assert saved.json()["profile"]["version"] == 1
+
+    imported = client.post(
+        "/api/leads/import",
+        json={
+            "source": "manual",
+            "rows": [
+                {
+                    "businessName": "Northstar Dental Practice",
+                    "website": "https://northstar-dental.example",
+                    "email": "hello@northstar-dental.example",
+                    "location": "Lahore, Pakistan",
+                },
+                {
+                    "businessName": "Northstar Dental University",
+                    "website": "https://northstar-university.example",
+                    "email": "office@northstar-university.example",
+                    "location": "Lahore, Pakistan",
+                },
+            ],
+        },
+    )
+    assert imported.status_code == 200
+    records = client.get("/api/leads?query=Northstar").json()["items"]
+    practice = next(item for item in records if "Practice" in item["businessName"])
+    university = next(item for item in records if "University" in item["businessName"])
+    assert practice["icpScore"] == 100
+    assert practice["effectiveScore"] == 100
+    assert sum(reason["points"] for reason in practice["icpReasons"]) == 100
+    assert {reason["code"] for reason in practice["icpReasons"]} >= {
+        "target_keyword_match",
+        "target_location_match",
+        "public_website",
+        "direct_contact",
+    }
+    assert university["icpScore"] == 65
+    assert "excluded_keyword_match" in {
+        reason["code"] for reason in university["icpReasons"]
+    }
+
+    high_intent = client.get("/api/leads?status=high-intent&query=Northstar").json()
+    assert [item["id"] for item in high_intent["items"]] == [practice["id"]]
+
+    corrected = client.put(
+        f"/api/leads/{university['id']}/score-override",
+        json={"score": 88, "reason": "Verified multi-location commercial clinic."},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["lead"]["icpScore"] == 65
+    assert corrected.json()["lead"]["effectiveScore"] == 88
+    assert corrected.json()["state"]["leadSummary"]["highIntent"] >= 2
+
+    rescored = client.put(
+        "/api/leads/icp-profile",
+        json={
+            "name": "Lahore dental practices",
+            "targetKeywords": ["dental"],
+            "excludedKeywords": ["university"],
+            "targetLocations": ["Lahore"],
+            "requireWebsite": True,
+            "requireContact": True,
+        },
+    )
+    assert rescored.status_code == 200
+    refreshed = client.get("/api/leads?query=Northstar%20Dental%20University").json()["items"][0]
+    assert refreshed["icpProfileVersion"] == 2
+    assert refreshed["icpScore"] == 65
+    assert refreshed["effectiveScore"] == 88
+
+    cleared = client.delete(f"/api/leads/{university['id']}/score-override")
+    assert cleared.status_code == 200
+    assert cleared.json()["lead"]["manualScore"] is None
+    assert cleared.json()["lead"]["effectiveScore"] == 65
 
 
 def test_draft_version_approval_and_single_publish(client, monkeypatch) -> None:

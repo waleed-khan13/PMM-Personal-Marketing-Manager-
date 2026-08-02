@@ -10,8 +10,15 @@ from sqlalchemy import func, or_, select
 
 from app.database import read_session, write_session
 from app.errors import AppError
-from app.models import Lead, LeadIdentity
-from app.schemas import LeadImportRequest, LeadImportRow, LeadStatusUpdate, LeadSuppressionUpdate
+from app.models import IcpProfile, Lead, LeadIdentity
+from app.schemas import (
+    IcpProfileUpdate,
+    LeadImportRequest,
+    LeadImportRow,
+    LeadScoreOverrideUpdate,
+    LeadStatusUpdate,
+    LeadSuppressionUpdate,
+)
 from app.store import append_audit, utc_now
 
 SOURCE_LABELS = {
@@ -69,6 +76,7 @@ def _identity_values(row: LeadImportRow) -> list[tuple[str, str]]:
 
 
 def _lead_dict(lead: Lead) -> dict[str, object]:
+    effective_score = lead.manual_score if lead.manual_score is not None else lead.icp_score
     return {
         "id": lead.id,
         "businessName": lead.business_name,
@@ -85,9 +93,197 @@ def _lead_dict(lead: Lead) -> dict[str, object]:
         "suppressed": lead.suppressed,
         "suppressionReason": lead.suppression_reason,
         "suppressedAt": lead.suppressed_at,
+        "icpScore": lead.icp_score,
+        "icpReasons": list(lead.icp_reasons or []),
+        "icpProfileVersion": lead.icp_profile_version,
+        "icpScoredAt": lead.icp_scored_at,
+        "manualScore": lead.manual_score,
+        "manualScoreReason": lead.manual_score_reason,
+        "manualScoreUpdatedAt": lead.manual_score_updated_at,
+        "effectiveScore": effective_score,
         "createdAt": lead.created_at,
         "updatedAt": lead.updated_at,
     }
+
+
+def _profile_dict(profile: IcpProfile) -> dict[str, object]:
+    return {
+        "id": profile.id,
+        "name": profile.name,
+        "targetKeywords": list(profile.target_keywords or []),
+        "excludedKeywords": list(profile.excluded_keywords or []),
+        "targetLocations": list(profile.target_locations or []),
+        "requireWebsite": profile.require_website,
+        "requireContact": profile.require_contact,
+        "version": profile.version,
+        "configured": profile.version > 0,
+        "updatedAt": profile.updated_at,
+    }
+
+
+def _score_reason(code: str, label: str, points: int, detail: str) -> dict[str, object]:
+    return {"code": code, "label": label, "points": points, "detail": detail}
+
+
+def _score_lead(lead: Lead, profile: IcpProfile, scored_at: str) -> None:
+    searchable = _normalized_text(
+        " ".join(
+            value
+            for value in (lead.business_name, lead.website or "", lead.notes or "")
+            if value
+        )
+    )
+    location = _normalized_text(lead.location or "")
+    reasons = [_score_reason("baseline", "Starting fit", 40, "Every lead starts at 40 points.")]
+    score = 40
+
+    if profile.target_keywords:
+        matches = [
+            term for term in profile.target_keywords if _normalized_text(term) in searchable
+        ]
+        if matches:
+            score += 20
+            reasons.append(
+                _score_reason(
+                    "target_keyword_match",
+                    "Target keyword match",
+                    20,
+                    f"Matched: {', '.join(matches[:3])}.",
+                )
+            )
+        else:
+            score -= 20
+            reasons.append(
+                _score_reason(
+                    "no_target_keyword",
+                    "No target keyword",
+                    -20,
+                    "No target keyword appears in the business name, website, or notes.",
+                )
+            )
+
+    if profile.target_locations:
+        location_matches = [
+            term for term in profile.target_locations if _normalized_text(term) in location
+        ]
+        if location_matches:
+            score += 15
+            reasons.append(
+                _score_reason(
+                    "target_location_match",
+                    "Target location match",
+                    15,
+                    f"Matched: {', '.join(location_matches[:3])}.",
+                )
+            )
+        else:
+            score -= 15
+            reasons.append(
+                _score_reason(
+                    "location_outside_target",
+                    "Outside target locations",
+                    -15,
+                    "The stored location does not match the target list.",
+                )
+            )
+
+    if lead.website:
+        score += 10
+        reasons.append(
+            _score_reason("public_website", "Public website", 10, "A website is available for research.")
+        )
+    elif profile.require_website:
+        score -= 20
+        reasons.append(
+            _score_reason(
+                "missing_required_website",
+                "Required website missing",
+                -20,
+                "This profile requires a public website.",
+            )
+        )
+
+    if lead.email or lead.phone:
+        score += 15
+        channels = " and ".join(
+            channel for channel, present in (("email", lead.email), ("phone", lead.phone)) if present
+        )
+        reasons.append(
+            _score_reason(
+                "direct_contact",
+                "Direct contact available",
+                15,
+                f"Available contact: {channels}.",
+            )
+        )
+    elif profile.require_contact:
+        score -= 25
+        reasons.append(
+            _score_reason(
+                "missing_required_contact",
+                "Required contact missing",
+                -25,
+                "This profile requires an email address or phone number.",
+            )
+        )
+
+    excluded_matches = [
+        term for term in profile.excluded_keywords if _normalized_text(term) in searchable
+    ]
+    if excluded_matches:
+        score -= 35
+        reasons.append(
+            _score_reason(
+                "excluded_keyword_match",
+                "Excluded keyword match",
+                -35,
+                f"Matched: {', '.join(excluded_matches[:3])}.",
+            )
+        )
+
+    if score < 0:
+        reasons.append(
+            _score_reason("score_floor", "Score floor", -score, "Scores cannot be lower than zero.")
+        )
+    lead.icp_score = max(0, min(score, 100))
+    lead.icp_reasons = reasons
+    lead.icp_profile_version = profile.version
+    lead.icp_scored_at = scored_at
+
+
+def icp_profile_state() -> dict[str, object]:
+    with read_session() as session:
+        profile = session.get(IcpProfile, 1)
+        if profile is None:
+            raise RuntimeError("ICP profile storage is not initialized.")
+        return _profile_dict(profile)
+
+
+def save_icp_profile(payload: IcpProfileUpdate) -> dict[str, object]:
+    now = utc_now()
+    with write_session() as session:
+        profile = session.get(IcpProfile, 1)
+        if profile is None:
+            raise RuntimeError("ICP profile storage is not initialized.")
+        profile.name = payload.name
+        profile.target_keywords = payload.target_keywords
+        profile.excluded_keywords = payload.excluded_keywords
+        profile.target_locations = payload.target_locations
+        profile.require_website = payload.require_website
+        profile.require_contact = payload.require_contact
+        profile.version += 1
+        profile.updated_at = now
+        leads = list(session.scalars(select(Lead)).all())
+        for lead in leads:
+            _score_lead(lead, profile, now)
+        append_audit(
+            session,
+            action="leads.icp_rescored",
+            entity_type="icp_profile",
+            entity_id=str(profile.id),
+            summary=f"ICP profile v{profile.version} saved and {len(leads)} leads rescored.",
+        )
+        return {"profile": _profile_dict(profile), "rescored": len(leads)}
 
 
 def _find_existing_lead(session, identities: Iterable[tuple[str, str]]) -> Lead | None:  # type: ignore[no-untyped-def]
@@ -157,6 +353,7 @@ def import_leads(payload: LeadImportRequest) -> dict[str, int]:
     suppressed = 0
     now = utc_now()
     with write_session() as session:
+        profile = session.get(IcpProfile, 1)
         for row in payload.rows:
             identities = _identity_values(row)
             lead = _find_existing_lead(session, identities)
@@ -179,12 +376,21 @@ def import_leads(payload: LeadImportRequest) -> dict[str, int]:
                     suppressed=False,
                     suppression_reason=None,
                     suppressed_at=None,
+                    icp_score=None,
+                    icp_reasons=[],
+                    icp_profile_version=None,
+                    icp_scored_at=None,
+                    manual_score=None,
+                    manual_score_reason=None,
+                    manual_score_updated_at=None,
                     created_at=now,
                     updated_at=now,
                 )
                 session.add(lead)
                 session.flush()
                 _add_missing_identities(session, lead, identities)
+                if profile is not None and profile.version > 0:
+                    _score_lead(lead, profile, now)
                 created += 1
                 continue
             if _merge_lead(lead, row, payload.source, now):
@@ -192,6 +398,8 @@ def import_leads(payload: LeadImportRequest) -> dict[str, int]:
             else:
                 unchanged += 1
             _add_missing_identities(session, lead, identities)
+            if profile is not None and profile.version > 0:
+                _score_lead(lead, profile, now)
         append_audit(
             session,
             action="leads.imported",
@@ -219,7 +427,9 @@ def list_leads(
         filters.append(Lead.suppressed.is_(True))
     else:
         filters.append(Lead.suppressed.is_(False))
-        if status != "active":
+        if status == "high-intent":
+            filters.append(func.coalesce(Lead.manual_score, Lead.icp_score) >= 70)
+        elif status != "active":
             filters.append(Lead.status == status)
     if query.strip():
         pattern = f"%{query.strip()}%"
@@ -251,7 +461,24 @@ def lead_summary() -> dict[str, int]:
         rows = session.execute(
             select(Lead.status, Lead.suppressed, func.count(Lead.id)).group_by(Lead.status, Lead.suppressed)
         ).all()
-    summary = {"total": 0, "active": 0, "suppressed": 0, "new": 0, "qualified": 0, "contacted": 0}
+        high_intent = int(
+            session.scalar(
+                select(func.count(Lead.id)).where(
+                    Lead.suppressed.is_(False),
+                    func.coalesce(Lead.manual_score, Lead.icp_score) >= 70,
+                )
+            )
+            or 0
+        )
+    summary = {
+        "total": 0,
+        "active": 0,
+        "suppressed": 0,
+        "new": 0,
+        "qualified": 0,
+        "contacted": 0,
+        "highIntent": high_intent,
+    }
     for status, is_suppressed, count in rows:
         amount = int(count)
         summary["total"] += amount
@@ -318,5 +545,46 @@ def restore_lead(lead_id: str) -> dict[str, object]:
             entity_type="lead",
             entity_id=lead.id,
             summary="Lead restored to the active local database.",
+        )
+        return _lead_dict(lead)
+
+
+def update_lead_score_override(
+    lead_id: str, payload: LeadScoreOverrideUpdate
+) -> dict[str, object]:
+    with write_session() as session:
+        lead = session.get(Lead, lead_id)
+        if lead is None:
+            raise AppError("Lead not found.", 404)
+        now = utc_now()
+        lead.manual_score = payload.score
+        lead.manual_score_reason = payload.reason
+        lead.manual_score_updated_at = now
+        lead.updated_at = now
+        append_audit(
+            session,
+            action="lead.score_corrected",
+            entity_type="lead",
+            entity_id=lead.id,
+            summary=f"Lead score corrected to {payload.score}: {payload.reason}",
+        )
+        return _lead_dict(lead)
+
+
+def clear_lead_score_override(lead_id: str) -> dict[str, object]:
+    with write_session() as session:
+        lead = session.get(Lead, lead_id)
+        if lead is None:
+            raise AppError("Lead not found.", 404)
+        lead.manual_score = None
+        lead.manual_score_reason = None
+        lead.manual_score_updated_at = None
+        lead.updated_at = utc_now()
+        append_audit(
+            session,
+            action="lead.score_correction_cleared",
+            entity_type="lead",
+            entity_id=lead.id,
+            summary="Manual lead score correction cleared; deterministic ICP score restored.",
         )
         return _lead_dict(lead)

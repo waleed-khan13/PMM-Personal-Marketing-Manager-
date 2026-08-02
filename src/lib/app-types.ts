@@ -149,6 +149,26 @@ export interface LeadEvidence {
   importedAt: string;
 }
 
+export interface IcpScoreReason {
+  code: string;
+  label: string;
+  points: number;
+  detail: string;
+}
+
+export interface IcpProfile {
+  id: number;
+  name: string;
+  targetKeywords: string[];
+  excludedKeywords: string[];
+  targetLocations: string[];
+  requireWebsite: boolean;
+  requireContact: boolean;
+  version: number;
+  configured: boolean;
+  updatedAt: string | null;
+}
+
 export interface Lead {
   id: string;
   businessName: string;
@@ -165,6 +185,14 @@ export interface Lead {
   suppressed: boolean;
   suppressionReason: string | null;
   suppressedAt: string | null;
+  icpScore: number | null;
+  icpReasons: IcpScoreReason[];
+  icpProfileVersion: number | null;
+  icpScoredAt: string | null;
+  manualScore: number | null;
+  manualScoreReason: string | null;
+  manualScoreUpdatedAt: string | null;
+  effectiveScore: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -176,6 +204,7 @@ export interface LeadSummary {
   new: number;
   qualified: number;
   contacted: number;
+  highIntent: number;
 }
 
 export interface LeadListResponse {
@@ -240,6 +269,7 @@ export interface PublicAppState {
   scheduler: PublicSchedulerState;
   connectors: PublicConnectorsState;
   leadSummary: LeadSummary;
+  icpProfile: IcpProfile;
   audit: AuditEvent[];
   runtime: {
     version: string;

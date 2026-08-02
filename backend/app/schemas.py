@@ -122,6 +122,39 @@ class LeadSuppressionUpdate(ApiModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class IcpProfileUpdate(ApiModel):
+    name: str = Field(min_length=1, max_length=120)
+    target_keywords: list[str] = Field(default_factory=list, max_length=30)
+    excluded_keywords: list[str] = Field(default_factory=list, max_length=30)
+    target_locations: list[str] = Field(default_factory=list, max_length=30)
+    require_website: bool = False
+    require_contact: bool = False
+
+    @field_validator("target_keywords", "excluded_keywords", "target_locations")
+    @classmethod
+    def clean_criteria(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            item = value.strip()[:100]
+            key = item.casefold()
+            if item and key not in seen:
+                cleaned.append(item)
+                seen.add(key)
+        return cleaned
+
+    @model_validator(mode="after")
+    def require_target(self) -> Self:
+        if not self.target_keywords and not self.target_locations:
+            raise ValueError("Add at least one target keyword or target location.")
+        return self
+
+
+class LeadScoreOverrideUpdate(ApiModel):
+    score: int = Field(ge=0, le=100)
+    reason: str = Field(min_length=3, max_length=500)
+
+
 class ConnectorAccountUpsert(ApiModel):
     adapter_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,79}$")
     name: str = Field(min_length=1, max_length=120)

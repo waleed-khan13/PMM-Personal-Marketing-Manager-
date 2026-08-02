@@ -1,6 +1,6 @@
 # LocalGrowth OS
 
-LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.6.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
+LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted marketing. Version `0.7.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
 
 ## What works today
 
@@ -22,9 +22,11 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Search and qualify leads, preserve an audited suppression list, and block suppressed records from reactivation during import.
 - Connect the official Google Places API with an encrypted local key and search attributed, no-store results without scraping Google Maps HTML.
 - Scan up to four robots-allowed public website pages with SSRF, redirect, content-type, size, timeout, and crawl-delay controls, then explicitly add independently extracted contact evidence to the vault.
+- Define an ideal customer profile with target keywords, locations, exclusions, and contact requirements, then rescore the complete local vault without an AI call.
+- Inspect point-by-point reason codes, filter leads at the 70+ high-intent threshold, and record auditable human score corrections without erasing the rule-based result.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, and X; ICP scoring/outreach controls; rendered-page crawling; and full SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.6 publishes and schedules only to Telegram and verified WordPress sites and never pretends an unavailable integration succeeded.
+Publishing adapters for LinkedIn, Instagram, Facebook, and X; outreach controls; rendered-page crawling; and full SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.7 publishes and schedules only to Telegram and verified WordPress sites and never pretends an unavailable integration succeeded.
 
 ## Native localhost run
 
@@ -57,6 +59,8 @@ Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` 
 For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. LocalGrowth stores the returned WordPress post ID and link in local state and the audit trail.
 
 Open **Lead intelligence** to upload or paste CSV data. Recognized columns include `company`, `website`, `email`, `phone`, `location`, `source_url`, and common aliases. Choose `LinkedIn export` only for a file you exported or are authorized to use; LocalGrowth does not scrape LinkedIn pages. Duplicate rows merge into one local record while retaining their source evidence. Suppressing a lead preserves its identity so later imports cannot silently reactivate it.
+
+Before qualification, configure the **Ideal customer profile** in Lead intelligence. Saving it deterministically rescales every local lead from 0–100 and new imports are scored immediately. Open any score to see its reason codes and point changes. A manual correction requires a written reason, remains visibly separate from the underlying ICP score, and can be cleared at any time.
 
 For live business discovery, create a restricted Google Maps API key with Places API (New) enabled, open **Lead intelligence → Connection**, and select **Save & test**. Search results remain transient browser state with Google Maps attribution and are never copied into SQLite. Select **Crawl public site** to inspect the business's own website under its robots rules, review the extracted fields, and explicitly select **Add to vault**. See the local [terms](docs/TERMS.md) and [privacy notice](docs/PRIVACY.md).
 
@@ -119,7 +123,7 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, connector registry/vault, lead vault, Places discovery, safe website crawler, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, lead vault and ICP scoring, Places discovery, safe website crawler, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
 - `backend/tests` — local API, connector-vault redaction, crawler safety, lead discovery, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.
