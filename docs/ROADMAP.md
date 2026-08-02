@@ -28,10 +28,11 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 
 ## Milestone 2 — social publishing
 
-- [ ] Local connector framework and encrypted scoped token vault.
+- [x] Local connector manifests, capability registry, CRUD API, and encrypted scoped multi-secret token vault.
+- [x] Slack account configuration plus real bot identity and Socket Mode token health checks.
 - [ ] Meta Pages/Instagram professional account adapter.
 - [ ] LinkedIn Posts adapter for users with approved API access.
-- [ ] Slack Socket Mode approval adapter.
+- [ ] Slack Socket Mode approval listener and version-bound interactive decisions.
 - [ ] WhatsApp notification adapter; interactive approval remains optional because Meta requires a reachable webhook.
 - [ ] Media processing, per-platform validation, calendar, and failure recovery.
 - [ ] Normalized engagement metrics and experiment ledger.

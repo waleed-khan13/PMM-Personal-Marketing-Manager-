@@ -2,6 +2,8 @@ export type ProviderKind = "ollama" | "openai-compatible";
 export type ContentChannel = "linkedin" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
+export type ConnectorCapability = "approval" | "notification" | "publish" | "leads" | "analytics" | "cms";
+export type ConnectorAvailability = "available" | "planned" | "access-gated" | "notification-only" | "built-in";
 
 export interface WorkspaceSettings {
   name: string;
@@ -55,7 +57,7 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector";
   entityId: string;
   summary: string;
   createdAt: string;
@@ -88,6 +90,50 @@ export interface PublicSchedulerState {
   catchUpHours: number;
 }
 
+export interface ConnectorFieldSpec {
+  key: string;
+  label: string;
+  required: boolean;
+  placeholder: string;
+  helpText: string;
+}
+
+export interface ConnectorManifest {
+  adapterId: string;
+  name: string;
+  description: string;
+  availability: ConnectorAvailability;
+  capabilities: ConnectorCapability[];
+  configFields: ConnectorFieldSpec[];
+  secretFields: ConnectorFieldSpec[];
+  allowedScopes: string[];
+  requiredScopes: string[];
+  docsUrl: string | null;
+}
+
+export interface ConnectorAccount {
+  id: string;
+  adapterId: string;
+  adapterName: string;
+  name: string;
+  config: Record<string, string>;
+  secretStatus: Record<string, boolean>;
+  scopes: string[];
+  capabilities: ConnectorCapability[];
+  enabled: boolean;
+  status: "saved" | "verified" | "error";
+  remoteAccountId: string | null;
+  lastVerifiedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicConnectorsState {
+  catalog: ConnectorManifest[];
+  accounts: ConnectorAccount[];
+}
+
 export interface PublicAppState {
   workspace: WorkspaceSettings;
   provider: PublicProviderSettings;
@@ -95,6 +141,7 @@ export interface PublicAppState {
   posts: GeneratedPost[];
   jobs: LocalJob[];
   scheduler: PublicSchedulerState;
+  connectors: PublicConnectorsState;
   audit: AuditEvent[];
   runtime: {
     version: string;

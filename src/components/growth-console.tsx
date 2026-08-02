@@ -81,6 +81,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type {
+  ConnectorAccount,
   ContentChannel,
   GeneratedPost,
   LocalJob,
@@ -505,6 +506,14 @@ export function GrowthConsole() {
     apiKey: string;
   }>({ kind: "ollama", baseUrl: "http://127.0.0.1:11434", model: "", apiKey: "" });
   const [telegramForm, setTelegramForm] = useState({ botToken: "", chatId: "" });
+  const [slackForm, setSlackForm] = useState({
+    name: "Slack approvals",
+    approvalChannelId: "",
+    botToken: "",
+    appToken: "",
+    enabled: true,
+  });
+  const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
     channel: ContentChannel;
@@ -546,6 +555,16 @@ export function GrowthConsole() {
           apiKey: "",
         });
         setTelegramForm({ chatId: next.telegram.chatId, botToken: "" });
+        const slack = next.connectors.accounts.find((account) => account.adapterId === "slack");
+        if (slack) {
+          setSlackForm({
+            name: slack.name,
+            approvalChannelId: slack.config.approval_channel_id ?? "",
+            botToken: "",
+            appToken: "",
+            enabled: slack.enabled,
+          });
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -591,6 +610,16 @@ export function GrowthConsole() {
     const telegram = Boolean(appState?.telegram.configured && appState.telegram.pollingEnabled);
     return { business, provider, telegram, complete: [business, provider, telegram].filter(Boolean).length };
   }, [appState]);
+
+  const slackAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "slack") ?? null,
+    [appState?.connectors.accounts],
+  );
+
+  const upcomingConnectors = useMemo(
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack"].includes(connector.adapterId)) ?? [],
+    [appState?.connectors.catalog],
+  );
 
   const filteredPosts = useMemo(
     () => (appState?.posts ?? []).filter((post) => queueFilter === "all" || post.status === queueFilter),
@@ -865,6 +894,79 @@ export function GrowthConsole() {
       toast.success(response.message);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update local Telegram approvals.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveSlackConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("slack-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (slackForm.botToken.trim()) secrets.bot_token = slackForm.botToken.trim();
+      if (slackForm.appToken.trim()) secrets.app_token = slackForm.appToken.trim();
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        slackAccount ? `/api/connectors/${slackAccount.id}` : "/api/connectors",
+        {
+          method: slackAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "slack",
+            name: slackForm.name,
+            config: { approval_channel_id: slackForm.approvalChannelId },
+            secrets,
+            scopes: ["chat:write", "connections:write"],
+            enabled: slackForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setSlackForm((current) => ({ ...current, botToken: "", appToken: "" }));
+      if (!quiet) toast.success("Slack connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the Slack connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testSlackConnection() {
+    const accountId = await saveSlackConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("slack-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Slack connection test failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeSlackConnector() {
+    if (!deleteConnector) return;
+    setBusy("slack-delete");
+    try {
+      const response = await requestJson<StateResponse>(`/api/connectors/${deleteConnector.id}`, { method: "DELETE" });
+      setAppState(response.state);
+      setDeleteConnector(null);
+      setSlackForm({
+        name: "Slack approvals",
+        approvalChannelId: "",
+        botToken: "",
+        appToken: "",
+        enabled: true,
+      });
+      toast.success("Slack connector removed from this computer");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove the Slack connector.");
     } finally {
       setBusy(null);
     }
@@ -1398,6 +1500,91 @@ export function GrowthConsole() {
                   </CardContent>
                 </Card>
               </div>
+
+              <Card className="overflow-hidden">
+                <CardHeader className="border-b border-zinc-900">
+                  <div className="flex items-center gap-3">
+                    <IntegrationIcon><LockKeyhole className="size-4" /></IntegrationIcon>
+                    <div><CardTitle>Slack approval connector</CardTitle><CardDescription>Encrypted local credentials with a real Slack API health check.</CardDescription></div>
+                  </div>
+                  <CardAction>
+                    <Badge
+                      className={cn(
+                        slackAccount?.status === "verified" && "border-emerald-500/25 bg-emerald-500/8 text-emerald-300",
+                        slackAccount?.status === "error" && "border-red-500/25 bg-red-500/8 text-red-300",
+                        (!slackAccount || slackAccount.status === "saved") && "border-zinc-700 text-zinc-400",
+                      )}
+                      variant="outline"
+                    >
+                      {slackAccount?.status === "verified" ? "Verified" : slackAccount?.status === "error" ? "Needs attention" : slackAccount ? "Saved" : "Not configured"}
+                    </Badge>
+                  </CardAction>
+                </CardHeader>
+                <CardContent className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+                  <form className="space-y-4" onSubmit={(event) => void saveSlackConnector(event)}>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field htmlFor="slack-name" label="Connection name"><Input id="slack-name" maxLength={80} onChange={(event) => setSlackForm((current) => ({ ...current, name: event.target.value }))} placeholder="Slack approvals" required value={slackForm.name} /></Field>
+                      <Field htmlFor="slack-channel" label="Approval channel ID" hint="Starts with C"><Input id="slack-channel" maxLength={120} onChange={(event) => setSlackForm((current) => ({ ...current, approvalChannelId: event.target.value }))} placeholder="C0123456789" required value={slackForm.approvalChannelId} /></Field>
+                      <Field htmlFor="slack-bot-token" label="Bot token" hint={slackAccount?.secretStatus.bot_token ? "Stored securely — blank keeps it" : "Slack OAuth bot token"}><Input autoComplete="new-password" id="slack-bot-token" onChange={(event) => setSlackForm((current) => ({ ...current, botToken: event.target.value }))} placeholder={slackAccount?.secretStatus.bot_token ? "••••••••••••" : "xoxb-…"} required={!slackAccount?.secretStatus.bot_token} type="password" value={slackForm.botToken} /></Field>
+                      <Field htmlFor="slack-app-token" label="App token" hint={slackAccount?.secretStatus.app_token ? "Stored securely — blank keeps it" : "Socket Mode app token"}><Input autoComplete="new-password" id="slack-app-token" onChange={(event) => setSlackForm((current) => ({ ...current, appToken: event.target.value }))} placeholder={slackAccount?.secretStatus.app_token ? "••••••••••••" : "xapp-…"} required={!slackAccount?.secretStatus.app_token} type="password" value={slackForm.appToken} /></Field>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-black p-3">
+                      <div>
+                        <Label className="text-xs text-zinc-200" htmlFor="slack-enabled">Connector enabled</Label>
+                        <p className="mt-1 text-[11px] leading-4 text-zinc-600">Disable without deleting locally stored settings.</p>
+                      </div>
+                      <Switch checked={slackForm.enabled} id="slack-enabled" onCheckedChange={(enabled) => setSlackForm((current) => ({ ...current, enabled }))} />
+                    </div>
+
+                    {slackAccount?.lastError ? <div className="flex gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-300"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /><span>{slackAccount.lastError}</span></div> : null}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-900 pt-4">
+                      <div>{slackAccount ? <Button disabled={busy === "slack-delete"} onClick={() => setDeleteConnector(slackAccount)} type="button" variant="ghost"><X /> Remove</Button> : null}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button disabled={busy === "slack-save" || busy === "slack-test"} type="submit" variant="outline">{busy === "slack-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
+                        <Button disabled={busy === "slack-save" || busy === "slack-test"} onClick={() => void testSlackConnection()} type="button">{busy === "slack-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
+                      </div>
+                    </div>
+                  </form>
+
+                  <div className="space-y-4 rounded-md border border-zinc-800 bg-black p-4">
+                    <div className="flex items-start gap-3">
+                      <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                      <div><p className="text-xs font-medium text-zinc-200">Local secret vault</p><p className="mt-1 text-[11px] leading-5 text-zinc-600">Tokens are AES-256-GCM encrypted at rest. The API and browser receive presence flags, never token values.</p></div>
+                    </div>
+                    <Separator className="bg-zinc-900" />
+                    <div>
+                      <p className="text-[10px] font-semibold tracking-[0.16em] text-zinc-600 uppercase">Required scopes</p>
+                      <div className="mt-2 flex flex-wrap gap-2"><Badge variant="outline">chat:write</Badge><Badge variant="outline">connections:write</Badge></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-md border border-zinc-900 p-3"><p className="text-zinc-600">Bot token</p><p className={cn("mt-1", slackAccount?.secretStatus.bot_token ? "text-emerald-300" : "text-zinc-500")}>{slackAccount?.secretStatus.bot_token ? "Stored" : "Missing"}</p></div>
+                      <div className="rounded-md border border-zinc-900 p-3"><p className="text-zinc-600">App token</p><p className={cn("mt-1", slackAccount?.secretStatus.app_token ? "text-emerald-300" : "text-zinc-500")}>{slackAccount?.secretStatus.app_token ? "Stored" : "Missing"}</p></div>
+                    </div>
+                    {slackAccount?.lastVerifiedAt ? <p className="font-mono text-[10px] text-zinc-600">Last verified {formatDate(slackAccount.lastVerifiedAt)}</p> : null}
+                    <p className="text-[11px] leading-5 text-zinc-700">This milestone validates Slack identity and Socket Mode access. Interactive Slack approval listening is the next adapter step.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div>
+                <div className="mb-3 flex items-end justify-between gap-3">
+                  <div><h3 className="text-sm font-medium text-zinc-200">Connector roadmap</h3><p className="mt-1 text-xs text-zinc-600">Availability is reported by the backend adapter registry.</p></div>
+                  <Badge className="border-zinc-800 text-zinc-500" variant="outline">{upcomingConnectors.length} adapters</Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {upcomingConnectors.map((connector) => (
+                    <Card className="bg-[#050505]" key={connector.adapterId}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-3"><IntegrationIcon><PlugZap className="size-4" /></IntegrationIcon><Badge className="border-zinc-800 text-zinc-500 capitalize" variant="outline">{connector.availability.replaceAll("-", " ")}</Badge></div>
+                        <div><CardTitle className="text-sm">{connector.name}</CardTitle><CardDescription className="mt-1 leading-5">{connector.description}</CardDescription></div>
+                      </CardHeader>
+                      <CardContent className="pt-0"><div className="flex flex-wrap gap-1.5">{connector.capabilities.map((capability) => <Badge className="text-[9px] text-zinc-600" key={capability} variant="outline">{capability}</Badge>)}</div></CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -1465,6 +1652,20 @@ export function GrowthConsole() {
           <DialogFooter className="border-zinc-800 bg-[#090909]">
             <Button onClick={() => setScheduleTarget(null)} type="button" variant="ghost">Cancel</Button>
             <Button disabled={Boolean(scheduleTarget && busy === `schedule-${scheduleTarget.id}`)} form="schedule-draft-form" type="submit">{scheduleTarget && busy === `schedule-${scheduleTarget.id}` ? <Loader2 className="animate-spin" /> : <Clock3 />} Schedule locally</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => !open && setDeleteConnector(null)} open={Boolean(deleteConnector)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove Slack connector?</DialogTitle>
+            <DialogDescription>This deletes the connection and its encrypted bot and app tokens from this computer. It does not change your Slack app.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-200">This local deletion cannot be undone. You can reconnect later with fresh tokens.</div>
+          <DialogFooter className="border-zinc-800 bg-[#090909]">
+            <Button disabled={busy === "slack-delete"} onClick={() => setDeleteConnector(null)} type="button" variant="ghost">Cancel</Button>
+            <Button disabled={busy === "slack-delete"} onClick={() => void removeSlackConnector()} type="button" variant="destructive">{busy === "slack-delete" ? <Loader2 className="animate-spin" /> : <X />} Remove locally</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

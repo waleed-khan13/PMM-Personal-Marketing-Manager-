@@ -41,6 +41,7 @@ The browser never calls the internal API port directly. This avoids cross-origin
 - Bind the web console and native API to `127.0.0.1`, never `0.0.0.0`, by default.
 - Store the SQLite database, master encryption key, exports, and generated media under one configurable local data directory.
 - Keep connector secrets encrypted with a local 256-bit master key. Never return decrypted secrets to the browser or logs.
+- Persist connector accounts separately from provider settings. Validate every config key, secret key, and requested scope against the adapter manifest before encrypting it.
 - Use SQLite WAL, foreign keys, a busy timeout, short write transactions, and one durable writer workflow.
 - Persist schedules before acknowledging them. If the computer is off, record and apply an explicit catch-up policy after restart.
 - Bind each publish job to an exact content revision and a unique idempotency key. A duplicate scheduling request returns the existing job.
@@ -70,12 +71,14 @@ The local scheduler claims one due SQLite job at a time, recovers stale locks on
 
 - Dashboard decisions are always available and require no external callback.
 - Telegram uses `getUpdates` long polling from the local worker; a public webhook is neither requested nor required.
-- Slack uses Socket Mode so interactive decisions arrive over an outbound WebSocket.
+- Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. The planned approval listener will use Socket Mode so decisions arrive over an outbound WebSocket.
 - Connectors that mandate a public inbound webhook, including interactive WhatsApp Cloud callbacks, are notification-only or optional in strict localhost mode.
 
 ## Adapter families
 
 Adapters publish an ID, version, capability list, config schema, secret fields, health check, required scopes, rate-limit hints, and data-retention policy.
+
+The connector registry is the public catalog and validation boundary. Account rows contain non-secret configuration and one encrypted JSON secret envelope. Public state projects only per-field presence flags; decrypted runtime data stays inside connector services and is never serialized into an API response.
 
 ### AI provider
 

@@ -7,15 +7,16 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Connect and test Ollama or a generic OpenAI-compatible API.
 - Save a business profile and generate channel-aware content with the selected model.
 - Persist settings, drafts, revisions, and audit events in a local SQLite WAL database.
-- Encrypt saved API keys and Telegram bot tokens with an automatically generated local master key.
+- Encrypt AI, Telegram, and multi-secret connector credentials with an automatically generated local master key.
 - Import the previous v0.2 JSON store on first launch without deleting the original file.
 - Edit, approve, or reject exact draft revisions; edits invalidate prior approval.
 - Send Telegram approval requests and receive button decisions through local long polling.
 - Publish an approved Telegram draft exactly once and record its remote message ID.
 - Schedule approved Telegram revisions with a restart-safe SQLite job queue, pause/resume, catch-up, cancellation, and reviewed retries.
+- Save a scoped Slack connector in the local vault and verify its bot identity and Socket Mode app token against Slack's real API.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, X, and blogs; Slack approvals; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.3 publishes and schedules only to Telegram and never pretends an unavailable integration succeeded.
+Publishing adapters for LinkedIn, Instagram, Facebook, X, and blogs; the interactive Slack approval listener; compliant lead discovery; and SEO audits remain roadmap work. Channel names can already be used to generate drafts, but v0.3 publishes and schedules only to Telegram and never pretends an unavailable integration succeeded.
 
 ## Native localhost run
 
@@ -42,6 +43,8 @@ Complete the checklist in the dashboard:
 4. Start the local Telegram approval listener.
 5. Generate and review a Telegram draft, then approve it.
 6. Publish immediately or schedule the exact approved revision from the local queue.
+
+Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and can test bot identity plus Socket Mode access. Receiving Slack approval decisions is not enabled yet.
 
 For a production-mode native run:
 
@@ -96,9 +99,9 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, Telegram poller, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, Telegram poller, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
-- `backend/tests` — local API, encryption, approval, scheduling, and publishing tests.
+- `backend/tests` — local API, connector-vault redaction, encryption, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.
 - `docs/ARCHITECTURE.md` — localhost runtime and adapter contracts.
 - `docs/ROADMAP.md` — milestones and acceptance criteria.

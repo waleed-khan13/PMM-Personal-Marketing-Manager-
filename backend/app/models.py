@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -47,6 +47,25 @@ class TelegramSettings(Base):
     polling_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_update_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class ConnectorAccount(Base):
+    __tablename__ = "connector_accounts"
+    __table_args__ = (UniqueConstraint("adapter_id", "name", name="uq_connector_adapter_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    adapter_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    encrypted_secrets: Mapped[str] = mapped_column(Text, nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="saved", index=True)
+    remote_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_verified_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class Post(Base):

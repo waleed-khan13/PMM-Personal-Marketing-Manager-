@@ -215,6 +215,23 @@ def _append_audit(
         session.execute(delete(AuditEvent).where(AuditEvent.id.in_(old_ids)))
 
 
+def append_audit(
+    session: Session,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    summary: str,
+) -> None:
+    _append_audit(
+        session,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        summary=summary,
+    )
+
+
 def _post_dict(post: Post) -> dict[str, Any]:
     return {
         "id": post.id,

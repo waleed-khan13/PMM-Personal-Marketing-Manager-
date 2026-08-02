@@ -10,10 +10,18 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.config import get_settings
+from app.connector_store import (
+    create_connector,
+    delete_connector,
+    public_connector_state,
+    update_connector,
+)
+from app.connectors.service import test_saved_connector
 from app.errors import AppError, ExternalServiceError
 from app.poller import TelegramPoller
 from app.scheduler import LocalScheduler
 from app.schemas import (
+    ConnectorAccountUpsert,
     DecisionRequest,
     EditPostRequest,
     GeneratePostRequest,
@@ -100,7 +108,9 @@ async def validation_error_handler(_request: Request, error: RequestValidationEr
 
 
 def state_response() -> dict[str, Any]:
-    return public_state(telegram_poller.status(), local_scheduler.status())
+    state = public_state(telegram_poller.status(), local_scheduler.status())
+    state["connectors"] = public_connector_state()
+    return state
 
 
 @app.get("/api/health")
@@ -268,3 +278,32 @@ async def scheduler_update(payload: SchedulerUpdate) -> dict[str, Any]:
         "message": "Local scheduler paused." if payload.paused else "Local scheduler resumed.",
         "state": state_response(),
     }
+
+
+@app.get("/api/connectors")
+def get_connectors() -> dict[str, Any]:
+    return public_connector_state()
+
+
+@app.post("/api/connectors")
+def save_connector(payload: ConnectorAccountUpsert) -> dict[str, Any]:
+    account = create_connector(payload)
+    return {"ok": True, "account": account, "state": state_response()}
+
+
+@app.put("/api/connectors/{account_id}")
+def replace_connector(account_id: str, payload: ConnectorAccountUpsert) -> dict[str, Any]:
+    account = update_connector(account_id, payload)
+    return {"ok": True, "account": account, "state": state_response()}
+
+
+@app.post("/api/connectors/{account_id}/test")
+async def connector_health(account_id: str) -> dict[str, Any]:
+    result = await test_saved_connector(account_id)
+    return {**result.public_dict(), "state": state_response()}
+
+
+@app.delete("/api/connectors/{account_id}")
+def remove_connector(account_id: str) -> dict[str, Any]:
+    delete_connector(account_id)
+    return {"ok": True, "state": state_response()}

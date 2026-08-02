@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -77,6 +77,44 @@ class SchedulePostRequest(ApiModel):
 
 class SchedulerUpdate(ApiModel):
     paused: bool
+
+
+class ConnectorAccountUpsert(ApiModel):
+    adapter_id: str = Field(pattern=r"^[a-z][a-z0-9-]{1,79}$")
+    name: str = Field(min_length=1, max_length=120)
+    config: dict[str, Any] = Field(default_factory=dict)
+    secrets: dict[str, str] = Field(default_factory=dict)
+    scopes: list[str] = Field(default_factory=list, max_length=30)
+    enabled: bool = True
+
+    @field_validator("config")
+    @classmethod
+    def validate_config(cls, config: dict[str, Any]) -> dict[str, Any]:
+        if len(config) > 30:
+            raise ValueError("Connector config has too many fields.")
+        return config
+
+    @field_validator("secrets")
+    @classmethod
+    def validate_secrets(cls, secrets: dict[str, str]) -> dict[str, str]:
+        if len(secrets) > 20:
+            raise ValueError("Connector secret payload has too many fields.")
+        cleaned: dict[str, str] = {}
+        for key, value in secrets.items():
+            clean_key = key.strip()
+            if not clean_key or len(clean_key) > 80 or len(value) > 8_000:
+                raise ValueError("Connector secret field is invalid.")
+            if value.strip():
+                cleaned[clean_key] = value.strip()
+        return cleaned
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, scopes: list[str]) -> list[str]:
+        cleaned = sorted({scope.strip() for scope in scopes if scope.strip()})
+        if any(len(scope) > 120 for scope in cleaned):
+            raise ValueError("Connector scope is too long.")
+        return cleaned
 
 
 class GeneratedContent(ApiModel):

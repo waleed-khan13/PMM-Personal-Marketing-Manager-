@@ -243,3 +243,93 @@ def test_durable_scheduler_is_idempotent_and_publishes_after_resume(client, monk
     assert final_post["remoteId"] == "scheduled-message-99"
     assert final_job["status"] == "completed"
     assert final_job["attempts"] == 1
+
+
+def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+
+    catalog = client.get("/api/connectors")
+    assert catalog.status_code == 200
+    slack_manifest = next(item for item in catalog.json()["catalog"] if item["adapterId"] == "slack")
+    assert slack_manifest["availability"] == "available"
+    assert set(slack_manifest["requiredScopes"]) == {"chat:write", "connections:write"}
+
+    invalid = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "slack",
+            "name": "Missing scope",
+            "config": {"approval_channel_id": "C0123456789"},
+            "secrets": {"bot_token": "xoxb-invalid", "app_token": "xapp-invalid"},
+            "scopes": ["chat:write"],
+        },
+    )
+    assert invalid.status_code == 400
+    assert "connections:write" in invalid.json()["error"]
+
+    bot_token = "xoxb-local-connector-secret"
+    app_token = "xapp-local-socket-secret"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "slack",
+            "name": "Approvals workspace",
+            "config": {"approval_channel_id": "C0123456789"},
+            "secrets": {"bot_token": bot_token, "app_token": app_token},
+            "scopes": ["chat:write", "connections:write"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    account_id = account["id"]
+    assert account["secretStatus"] == {"bot_token": True, "app_token": True}
+    assert bot_token not in created.text
+    assert app_token not in created.text
+
+    from app.config import get_settings
+
+    with sqlite3.connect(get_settings().database_path) as connection:
+        encrypted = connection.execute(
+            "SELECT encrypted_secrets FROM connector_accounts WHERE id = ?",
+            (account_id,),
+        ).fetchone()[0]
+    assert bot_token not in encrypted
+    assert app_token not in encrypted
+
+    updated = client.put(
+        f"/api/connectors/{account_id}",
+        json={
+            "adapterId": "slack",
+            "name": "Approvals workspace",
+            "config": {"approval_channel_id": "C9876543210"},
+            "secrets": {},
+            "scopes": ["chat:write", "connections:write"],
+            "enabled": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["account"]["secretStatus"] == {"bot_token": True, "app_token": True}
+
+    async def fake_slack_test(_self, config, secrets):
+        assert config["approval_channel_id"] == "C9876543210"
+        assert secrets == {"bot_token": bot_token, "app_token": app_token}
+        return ConnectorTestResult(
+            ok=True,
+            message="Connected to Slack workspace Test team.",
+            remote_account_id="T123456",
+            details={"team": "Test team", "socketMode": "ready"},
+        )
+
+    monkeypatch.setattr("app.connectors.slack.SlackAdapter.test_connection", fake_slack_test)
+    tested = client.post(f"/api/connectors/{account_id}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == "T123456"
+    verified = next(
+        item for item in tested.json()["state"]["connectors"]["accounts"] if item["id"] == account_id
+    )
+    assert verified["status"] == "verified"
+
+    removed = client.delete(f"/api/connectors/{account_id}")
+    assert removed.status_code == 200
+    assert all(item["id"] != account_id for item in removed.json()["state"]["connectors"]["accounts"])
