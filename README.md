@@ -118,8 +118,14 @@ After **Save & test**, LocalGrowth opens an outbound WebSocket and shows `Listen
 pnpm typecheck
 pnpm lint
 pnpm backend:test
+pnpm test:e2e:install
+pnpm test:e2e
 pnpm build
 ```
+
+The Playwright suite starts a real Next.js console, FastAPI service, and temporary SQLite database on loopback ports. It uses deterministic local stand-ins only for the external OpenAI-compatible and WordPress APIs, then verifies provider setup, draft generation, editing, revision-bound approval, publishing, persisted remote identity, automated WCAG A/AA checks, and mobile keyboard navigation. Browser artifacts are written under `output/playwright/`.
+
+Install Chromium once with `pnpm test:e2e:install`. If the Playwright browser download is unavailable but Google Chrome is already installed, run with `LOCALGROWTH_E2E_BROWSER_CHANNEL=chrome` (PowerShell: `$env:LOCALGROWTH_E2E_BROWSER_CHANNEL='chrome'`).
 
 Run every check together with:
 
@@ -129,6 +135,8 @@ pnpm check
 
 ## Repository map
 
+- `e2e` — real localhost workflows, automated accessibility checks, and responsive keyboard coverage.
+- `scripts/e2e-server.mjs` — isolated browser-test runtime and deterministic external-service stand-ins.
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.

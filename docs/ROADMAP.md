@@ -11,7 +11,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] Telegram notifications and Telegram publishing.
 - [x] Encrypted connector secrets and local persistence.
 - [x] Native Node and loopback-only Docker packaging.
-- [ ] Automated UI and accessibility tests.
+- [x] Automated Playwright UI, WCAG A/AA, mobile keyboard, and real localhost workflow tests.
 
 ## Milestone 1 — local application core (complete)
 
@@ -22,7 +22,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] Telegram long-polling approvals with no public webhook or tunnel.
 - [x] Persistent local jobs, retries, idempotency, pause, and catch-up rules for Telegram publishing.
 - [x] Native launcher that starts the API, worker, and web console together.
-- [x] Backend unit/integration tests and a real localhost browser smoke test.
+- [x] Backend unit/integration tests and a real localhost browser workflow suite.
 
 **Acceptance:** a fresh install starts locally, connects Ollama or an API provider, generates a draft, receives a Telegram decision through long polling, publishes exactly once, survives a restart, and exposes the complete audit trail without any hosted LocalGrowth service.
 

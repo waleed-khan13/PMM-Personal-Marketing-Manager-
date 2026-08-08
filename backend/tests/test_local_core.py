@@ -1272,7 +1272,7 @@ def test_wordpress_payload_is_safe_and_remote_sites_require_https(monkeypatch) -
             {
                 "title": "Safe post",
                 "body": "Approved <script>alert('no')</script>\n\nSecond line",
-                "hashtags": ["#approved"],
+                "hashtags": ["#approved", "reviewed"],
             },
         )
     )
@@ -1284,7 +1284,7 @@ def test_wordpress_payload_is_safe_and_remote_sites_require_https(monkeypatch) -
         "title": "Safe post",
         "content": (
             "<p>Approved &lt;script&gt;alert(&#x27;no&#x27;)&lt;/script&gt;</p>\n"
-            "<p>Second line</p>\n<p>#approved</p>"
+            "<p>Second line</p>\n<p>#approved #reviewed</p>"
         ),
         "status": "publish",
     }

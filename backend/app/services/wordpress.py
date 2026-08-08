@@ -116,7 +116,11 @@ def _approved_content_html(post: dict[str, Any]) -> str:
     body = str(post.get("body") or "").strip()
     paragraphs = [part.strip() for part in body.split("\n\n") if part.strip()]
     html = "\n".join(f"<p>{escape(part).replace(chr(10), '<br>')}</p>" for part in paragraphs)
-    hashtags = [str(tag).strip() for tag in post.get("hashtags") or [] if str(tag).strip()]
+    hashtags = [
+        tag if tag.startswith("#") else f"#{tag}"
+        for value in post.get("hashtags") or []
+        if (tag := str(value).strip())
+    ]
     if hashtags:
         html = f"{html}\n<p>{escape(' '.join(hashtags))}</p>"
     return html

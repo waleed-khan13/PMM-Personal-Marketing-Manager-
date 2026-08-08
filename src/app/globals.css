@@ -141,6 +141,19 @@
 }
 
 @layer utilities {
+  /* Preserve the near-black hierarchy while keeping secondary copy readable at WCAG AA. */
+  .text-zinc-500 {
+    color: #a1a1aa;
+  }
+
+  .text-zinc-600 {
+    color: #92929d;
+  }
+
+  .text-zinc-700 {
+    color: #85858f;
+  }
+
   .control-grid {
     background-image:
       linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),

@@ -1129,7 +1129,7 @@ export function GrowthConsole() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="truncate text-[10px] font-semibold tracking-[0.18em] text-zinc-600 uppercase">{meta.eyebrow}</p>
-              <span className="hidden text-zinc-800 sm:inline">/</span>
+              <span aria-hidden className="hidden text-zinc-800 sm:inline">/</span>
               <p className="hidden truncate text-[10px] text-zinc-700 sm:block">{appState?.workspace.name || "Local workspace"}</p>
             </div>
             <h1 className="mt-1 truncate text-sm font-semibold text-zinc-100 sm:text-base">{meta.title}</h1>
@@ -1215,7 +1215,7 @@ export function GrowthConsole() {
                     <CardTitle>System readiness</CardTitle>
                     <CardDescription>{setup.complete}/3 modules configured</CardDescription>
                     <CardAction><span className="font-mono text-xs text-zinc-500">{Math.round((setup.complete / 3) * 100)}%</span></CardAction>
-                    <Progress className="col-span-full mt-3" value={(setup.complete / 3) * 100} />
+                    <Progress aria-label="System readiness" className="col-span-full mt-3" value={(setup.complete / 3) * 100} />
                   </CardHeader>
                   <CardContent className="p-0">
                     <SetupRow complete={setup.business} description="Used as factual context for generation." label="Business profile" onClick={() => navigate("integrations")} />
