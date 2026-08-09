@@ -551,17 +551,24 @@ def create_post(
     return _post_dict(post)
 
 
-def record_approval_sent(post_id: str, source: str = "telegram") -> None:
+def record_approval_sent(
+    post_id: str,
+    source: str = "telegram",
+    remote_message_id: str | None = None,
+) -> None:
     with write_session() as session:
         if session.get(Post, post_id) is None:
             return
-        channel = "Slack" if source == "slack" else "Telegram"
+        channel = {"slack": "Slack", "whatsapp": "WhatsApp"}.get(source, "Telegram")
+        summary = f"Approval request sent to {channel}."
+        if remote_message_id:
+            summary = f"Approval request sent to {channel}; remote message ID {remote_message_id}."
         _append_audit(
             session,
             action="approval.sent",
             entity_type="post",
             entity_id=post_id,
-            summary=f"Approval request sent to {channel}.",
+            summary=summary,
         )
 
 

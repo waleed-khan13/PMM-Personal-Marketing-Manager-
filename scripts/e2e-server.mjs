@@ -27,6 +27,8 @@ const mockState = {
   linkedinPublishes: 0,
   linkedinOrganizationAuthChecks: 0,
   linkedinOrganizationPublishes: 0,
+  whatsappAuthChecks: 0,
+  whatsappMessages: 0,
   lastPublishedPost: null,
   lastFacebookPost: null,
   lastInstagramContainer: null,
@@ -35,6 +37,7 @@ const mockState = {
   lastLinkedInHeaders: null,
   lastLinkedInOrganizationPost: null,
   lastLinkedInOrganizationHeaders: null,
+  lastWhatsAppTemplate: null,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -79,13 +82,16 @@ const mockServer = createServer(async (request, response) => {
       const facebookDraft = mockState.generationRequests === 2;
       const instagramDraft = mockState.generationRequests === 3;
       const linkedinDraft = mockState.generationRequests === 4;
-      const linkedinOrganizationDraft = mockState.generationRequests > 4;
+      const linkedinOrganizationDraft = mockState.generationRequests === 5;
+      const whatsappDraft = mockState.generationRequests === 6;
       sendJson(response, 200, {
         choices: [
           {
             message: {
               content: JSON.stringify({
-                title: linkedinOrganizationDraft
+                title: whatsappDraft
+                  ? "A WhatsApp-reviewed Facebook update"
+                  : linkedinOrganizationDraft
                   ? "A reviewed LinkedIn Company Page update"
                   : linkedinDraft
                   ? "A reviewed LinkedIn member update"
@@ -94,7 +100,9 @@ const mockServer = createServer(async (request, response) => {
                   : facebookDraft
                     ? "A useful Facebook Page update"
                     : "A practical local growth checklist",
-                body: linkedinOrganizationDraft
+                body: whatsappDraft
+                  ? "Send this exact draft preview to the owner on WhatsApp before any publishing decision."
+                  : linkedinOrganizationDraft
                   ? "Share one useful company lesson, make the customer value clear, and publish only the exact reviewed Page update."
                   : linkedinDraft
                   ? "Share one practical lesson, make the professional value clear, and keep the published text human-reviewed."
@@ -103,7 +111,9 @@ const mockServer = createServer(async (request, response) => {
                   : facebookDraft
                   ? "Share one useful local insight, invite a relevant response, and keep the final post human-reviewed."
                   : "Start with one clear customer problem, publish a useful answer, and review the result before the next post.",
-                hashtags: linkedinOrganizationDraft
+                hashtags: whatsappDraft
+                  ? ["#WhatsAppReview", "#HumanApproval"]
+                  : linkedinOrganizationDraft
                   ? ["#CompanyGrowth", "#HumanReviewed"]
                   : linkedinDraft
                   ? ["#ProfessionalGrowth", "#HumanReviewed"]
@@ -112,7 +122,9 @@ const mockServer = createServer(async (request, response) => {
                   : facebookDraft
                     ? ["#LocalBusiness", "#FacebookMarketing"]
                     : ["#LocalGrowth", "#SmallBusiness"],
-                rationale: linkedinOrganizationDraft
+                rationale: whatsappDraft
+                  ? "An approved template notifies the reviewer without exposing a localhost webhook."
+                  : linkedinOrganizationDraft
                   ? "A concise Page post exercises permission-verified LinkedIn organization publishing."
                   : linkedinDraft
                   ? "A concise public text post exercises the official LinkedIn Posts API member flow."
@@ -174,6 +186,36 @@ const mockServer = createServer(async (request, response) => {
         new URLSearchParams(Buffer.concat(chunks).toString("utf8")),
       );
       sendJson(response, 200, { id: "123456789012345_987654321" });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/whatsapp/v25.0/155500011122233") {
+      mockState.whatsappAuthChecks += 1;
+      if (request.headers.authorization !== "Bearer e2e-whatsapp-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      if (url.searchParams.get("fields") !== "id,verified_name,display_phone_number,quality_rating") {
+        sendJson(response, 400, { error: { code: 100, message: "Unsupported fields request." } });
+        return;
+      }
+      sendJson(response, 200, {
+        id: "155500011122233",
+        verified_name: "Northstar Studio",
+        display_phone_number: "+92 300 1234567",
+        quality_rating: "GREEN",
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/whatsapp/v25.0/155500011122233/messages") {
+      mockState.whatsappMessages += 1;
+      if (request.headers.authorization !== "Bearer e2e-whatsapp-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      mockState.lastWhatsAppTemplate = await readJson(request);
+      sendJson(response, 200, { messages: [{ id: "wamid.e2e-draft-review" }] });
       return;
     }
 
@@ -393,6 +435,7 @@ launch(
     LOCALGROWTH_SCHEDULER_INTERVAL: "0.25",
     LOCALGROWTH_SLACK_SOCKET_MODE: "0",
     LOCALGROWTH_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
+    LOCALGROWTH_WHATSAPP_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/whatsapp`,
     LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,
     LOCALGROWTH_LINKEDIN_API_BASE_URL: `http://127.0.0.1:${mockPort}/linkedin`,
   },

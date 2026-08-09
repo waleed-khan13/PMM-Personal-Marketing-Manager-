@@ -56,6 +56,10 @@ import {
   MetaConnectorCard,
   type MetaConnectorForm,
 } from "@/components/meta-connector-card";
+import {
+  WhatsAppConnectorCard,
+  type WhatsAppConnectorForm,
+} from "@/components/whatsapp-connector-card";
 import { SeoWorkspace } from "@/components/seo-workspace";
 
 import { Badge } from "@/components/ui/badge";
@@ -589,6 +593,16 @@ export function GrowthConsole() {
     pageAccessToken: "",
     enabled: true,
   });
+  const [whatsappForm, setWhatsappForm] = useState<WhatsAppConnectorForm>({
+    name: "Owner WhatsApp reviews",
+    phoneNumberId: "",
+    recipientPhone: "",
+    apiVersion: "v25.0",
+    templateName: "localgrowth_draft_review",
+    templateLanguage: "en_US",
+    accessToken: "",
+    enabled: true,
+  });
   const [instagramForm, setInstagramForm] = useState<InstagramConnectorForm>({
     name: "Company Instagram",
     userId: "",
@@ -620,6 +634,7 @@ export function GrowthConsole() {
     mediaUrl: string;
     notifyTelegram: boolean;
     notifySlack: boolean;
+    notifyWhatsapp: boolean;
   }>({
     topic: "",
     channel: "linkedin",
@@ -628,6 +643,7 @@ export function GrowthConsole() {
     mediaUrl: "",
     notifyTelegram: true,
     notifySlack: false,
+    notifyWhatsapp: false,
   });
 
   const loadState = useCallback(async () => {
@@ -657,6 +673,10 @@ export function GrowthConsole() {
           apiKey: "",
         });
         setTelegramForm({ chatId: next.telegram.chatId, botToken: "" });
+        setGenerateForm((current) => ({
+          ...current,
+          notifyTelegram: next.telegram.configured,
+        }));
         const slack = next.connectors.accounts.find((account) => account.adapterId === "slack");
         if (slack) {
           setSlackForm({
@@ -685,6 +705,19 @@ export function GrowthConsole() {
             apiVersion: String(meta.config.api_version ?? "v25.0"),
             pageAccessToken: "",
             enabled: meta.enabled,
+          });
+        }
+        const whatsapp = next.connectors.accounts.find((account) => account.adapterId === "whatsapp");
+        if (whatsapp) {
+          setWhatsappForm({
+            name: whatsapp.name,
+            phoneNumberId: String(whatsapp.config.phone_number_id ?? ""),
+            recipientPhone: String(whatsapp.config.recipient_phone ?? ""),
+            apiVersion: String(whatsapp.config.api_version ?? "v25.0"),
+            templateName: String(whatsapp.config.template_name ?? "localgrowth_draft_review"),
+            templateLanguage: String(whatsapp.config.template_language ?? "en_US"),
+            accessToken: "",
+            enabled: whatsapp.enabled,
           });
         }
         const instagram = next.connectors.accounts.find((account) => account.adapterId === "instagram");
@@ -784,6 +817,11 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const whatsappAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "whatsapp") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const instagramAccount = useMemo(
     () => appState?.connectors.accounts.find((account) => account.adapterId === "instagram") ?? null,
     [appState?.connectors.accounts],
@@ -800,7 +838,7 @@ export function GrowthConsole() {
   );
 
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram", "linkedin", "linkedin-organization"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram", "linkedin", "linkedin-organization", "whatsapp"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -915,7 +953,12 @@ export function GrowthConsole() {
         ok: boolean;
         post: GeneratedPost;
         notification: { ok: boolean; message: string } | null;
-        notifications: Array<{ channel: "telegram" | "slack"; ok: boolean; message: string }>;
+        notifications: Array<{
+          channel: "telegram" | "slack" | "whatsapp";
+          ok: boolean;
+          message: string;
+          messageId?: string;
+        }>;
         state: PublicAppState;
       }>("/api/posts/generate", {
         method: "POST",
@@ -1278,6 +1321,64 @@ export function GrowthConsole() {
     }
   }
 
+  async function saveWhatsAppConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("whatsapp-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (whatsappForm.accessToken.trim()) {
+        secrets.access_token = whatsappForm.accessToken.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        whatsappAccount ? `/api/connectors/${whatsappAccount.id}` : "/api/connectors",
+        {
+          method: whatsappAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "whatsapp",
+            name: whatsappForm.name,
+            config: {
+              phone_number_id: whatsappForm.phoneNumberId,
+              recipient_phone: whatsappForm.recipientPhone,
+              api_version: whatsappForm.apiVersion,
+              template_name: whatsappForm.templateName,
+              template_language: whatsappForm.templateLanguage,
+            },
+            secrets,
+            scopes: ["whatsapp_business_messaging", "whatsapp_business_management"],
+            enabled: whatsappForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setWhatsappForm((current) => ({ ...current, accessToken: "" }));
+      if (!quiet) toast.success("WhatsApp connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the WhatsApp connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testWhatsAppConnection() {
+    const accountId = await saveWhatsAppConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("whatsapp-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "WhatsApp business-number check failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function saveInstagramConnector(event?: FormEvent, quiet = false) {
     event?.preventDefault();
     setBusy("instagram-save");
@@ -1470,6 +1571,17 @@ export function GrowthConsole() {
           pageId: "",
           apiVersion: "v25.0",
           pageAccessToken: "",
+          enabled: true,
+        });
+      } else if (adapterId === "whatsapp") {
+        setWhatsappForm({
+          name: "Owner WhatsApp reviews",
+          phoneNumberId: "",
+          recipientPhone: "",
+          apiVersion: "v25.0",
+          templateName: "localgrowth_draft_review",
+          templateLanguage: "en_US",
+          accessToken: "",
           enabled: true,
         });
       } else if (adapterId === "instagram") {
@@ -1725,7 +1837,7 @@ export function GrowthConsole() {
                         <MediaPreview url={generateForm.mediaUrl} />
                       </div>
                     ) : null}
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
                         <div>
                           <Label className="text-xs text-zinc-200" htmlFor="notify-telegram">Telegram approval</Label>
@@ -1748,6 +1860,18 @@ export function GrowthConsole() {
                           disabled={slackAccount?.status !== "verified" || !slackAccount.enabled}
                           id="notify-slack"
                           onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifySlack: checked }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-5 rounded-md border border-emerald-950 bg-[#020503] px-4 py-3.5">
+                        <div>
+                          <Label className="text-xs text-zinc-200" htmlFor="notify-whatsapp">WhatsApp alert</Label>
+                          <p className="mt-1 text-[11px] text-zinc-600">Send a template preview; decide elsewhere.</p>
+                        </div>
+                        <Switch
+                          checked={generateForm.notifyWhatsapp}
+                          disabled={whatsappAccount?.status !== "verified" || !whatsappAccount.enabled}
+                          id="notify-whatsapp"
+                          onCheckedChange={(checked) => setGenerateForm((current) => ({ ...current, notifyWhatsapp: checked }))}
                         />
                       </div>
                     </div>
@@ -2199,6 +2323,16 @@ export function GrowthConsole() {
                 onRemove={() => metaAccount && setDeleteConnector(metaAccount)}
                 onSave={(event) => void saveMetaConnector(event)}
                 onTest={() => void testMetaConnection()}
+              />
+
+              <WhatsAppConnectorCard
+                account={whatsappAccount}
+                busy={busy}
+                form={whatsappForm}
+                onChange={(patch) => setWhatsappForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => whatsappAccount && setDeleteConnector(whatsappAccount)}
+                onSave={(event) => void saveWhatsAppConnector(event)}
+                onTest={() => void testWhatsAppConnection()}
               />
 
               <InstagramConnectorCard

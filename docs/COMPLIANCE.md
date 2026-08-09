@@ -57,6 +57,8 @@ Version 0.8 keeps local deterministic ICP profiles, full-vault rescoring, explan
 - The core creates drafts; bulk send is not enabled by default.
 - Require a configured legal basis/consent state, sender identity, suppression check, and jurisdiction policy before sending.
 - Enforce unsubscribe/opt-out immediately and across all connectors.
+- Treat a configured WhatsApp review recipient as an explicit operator-selected destination. LocalGrowth sends only an approved-template draft preview, never chooses recipients from scraped lead data, and never represents a notification as consent for outreach.
+- WhatsApp Cloud delivery sends the configured recipient number, template metadata, and bounded draft content to Meta. The access token remains encrypted locally and is used only in the bearer header. Strict-localhost mode does not expose an inbound webhook, so delivery receipts and interactive WhatsApp approvals are not claimed.
 - Prohibit purchased-list spam, deceptive identity, fake personalization, and sensitive-trait targeting.
 
 Version 0.8 requires an operator-recorded legal basis, compatible consent state, supporting purpose/evidence note, current retention review date, deliverable email, and suppression check before generation. AI output is an editable plain-text email draft. Edits increment the revision and invalidate approval; only the exact approved revision can be exported as CSV. The core has no outreach send endpoint. Retention expiry blocks generation/export and surfaces a review filter, but never silently deletes data. Permanent deletion requires a written reason and the exact typed confirmation `DELETE`; a non-personal audit event remains.

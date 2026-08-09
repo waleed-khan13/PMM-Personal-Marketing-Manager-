@@ -17,7 +17,11 @@ from app.connector_store import (
     public_connector_state,
     update_connector,
 )
-from app.connectors.service import send_saved_slack_approval, test_saved_connector
+from app.connectors.service import (
+    send_saved_slack_approval,
+    send_saved_whatsapp_approval,
+    test_saved_connector,
+)
 from app.errors import AppError, ExternalServiceError
 from app.lead_store import (
     clear_lead_score_override,
@@ -477,6 +481,24 @@ async def generate_post(payload: GeneratePostRequest) -> dict[str, Any]:
             )
         except AppError as error:
             notifications.append({"channel": "slack", "ok": False, "message": error.message})
+    if payload.notify_whatsapp:
+        try:
+            delivery = await send_saved_whatsapp_approval(post)
+            record_approval_sent(
+                post["id"],
+                source="whatsapp",
+                remote_message_id=delivery["messageId"],
+            )
+            notifications.append(
+                {
+                    "channel": "whatsapp",
+                    "ok": True,
+                    "message": "Draft review notification sent to WhatsApp.",
+                    "messageId": delivery["messageId"],
+                }
+            )
+        except AppError as error:
+            notifications.append({"channel": "whatsapp", "ok": False, "message": error.message})
     return {
         "ok": True,
         "post": post,
