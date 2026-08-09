@@ -65,7 +65,7 @@ Trigger (schedule / UI / local connector listener)
 
 The connector action never consumes free-form model output directly. Every payload is parsed into a versioned schema, validated, policy-checked, and frozen when submitted for approval. Editing after approval creates a new revision and invalidates the previous decision.
 
-The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram or WordPress delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly review it before another attempt.
+The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram, WordPress, or Facebook Page delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly review it before another attempt.
 
 ## Local lead vault
 
@@ -89,6 +89,7 @@ The Local SEO lab reuses the crawler's URL normalization, public-address validat
 - Telegram uses `getUpdates` long polling from the local worker; a public webhook is neither requested nor required.
 - Slack account health checks call `auth.test` for the bot token and `apps.connections.open` for the app token. Verified, enabled accounts run a supervised Socket Mode connection; every envelope is acknowledged before a configured-channel, revision-bound decision is applied.
 - WordPress uses the official REST API with an operator-created Application Password. Remote sites require HTTPS, credentials remain encrypted locally, and approved Blog revisions can publish immediately or through the durable scheduler.
+- Meta Pages uses the official Graph API with an operator-supplied Page ID and Page Access Token. The adapter pins an explicit API version, verifies Page identity, requires the publishing scopes in its connector manifest, uses bearer authorization instead of token query strings, and publishes only exact approved Facebook revisions to the Page feed.
 - Connectors that mandate a public inbound webhook, including interactive WhatsApp Cloud callbacks, are notification-only or optional in strict localhost mode.
 - Google Places uses official outbound Text Search requests; attributed results are transient and only public website-derived evidence may enter the lead vault.
 

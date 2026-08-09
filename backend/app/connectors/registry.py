@@ -4,6 +4,7 @@ from typing import Any
 
 from app.connectors.base import ConnectorAdapter, ConnectorManifest
 from app.connectors.google_places import GooglePlacesAdapter
+from app.connectors.meta import MetaPagesAdapter
 from app.connectors.slack import SlackAdapter
 from app.connectors.wordpress import WordPressAdapter
 from app.errors import AppError
@@ -11,10 +12,12 @@ from app.errors import AppError
 _slack = SlackAdapter()
 _wordpress = WordPressAdapter()
 _google_places = GooglePlacesAdapter()
+_meta = MetaPagesAdapter()
 _adapters: dict[str, ConnectorAdapter] = {
     "slack": _slack,
     "wordpress": _wordpress,
     "google-places": _google_places,
+    "meta": _meta,
 }
 
 _catalog: tuple[ConnectorManifest, ...] = (
@@ -28,13 +31,7 @@ _catalog: tuple[ConnectorManifest, ...] = (
     _slack.manifest,
     _wordpress.manifest,
     _google_places.manifest,
-    ConnectorManifest(
-        adapter_id="meta",
-        name="Meta Pages & Instagram",
-        description="Official Graph API publishing for Pages and professional Instagram accounts.",
-        availability="planned",
-        capabilities=("publish", "analytics"),
-    ),
+    _meta.manifest,
     ConnectorManifest(
         adapter_id="linkedin",
         name="LinkedIn",

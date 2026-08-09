@@ -1288,3 +1288,241 @@ def test_wordpress_payload_is_safe_and_remote_sites_require_https(monkeypatch) -
         ),
         "status": "publish",
     }
+
+
+def test_meta_connector_publishes_exact_approved_facebook_revision(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
+    from app.services.meta import MetaPublishResult
+
+    catalog = client.get("/api/connectors").json()["catalog"]
+    manifest = next(item for item in catalog if item["adapterId"] == "meta")
+    assert manifest["name"] == "Meta Pages"
+    assert manifest["availability"] == "available"
+    assert manifest["capabilities"] == ["publish"]
+    assert manifest["requiredScopes"] == ["pages_read_engagement", "pages_manage_posts"]
+
+    page_id = "123456789012345"
+    page_access_token = "encrypted-page-access-token"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "meta",
+            "name": "Company Facebook Page",
+            "config": {"page_id": page_id, "api_version": "v25.0"},
+            "secrets": {"page_access_token": page_access_token},
+            "scopes": ["pages_read_engagement", "pages_manage_posts"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    assert account["secretStatus"] == {"page_access_token": True}
+    assert page_access_token not in created.text
+
+    async def fake_meta_test(_self, config, secrets):
+        assert config == {"page_id": page_id, "api_version": "v25.0"}
+        assert secrets == {"page_access_token": page_access_token}
+        return ConnectorTestResult(
+            ok=True,
+            message="Connected to Facebook Page Northstar Studio.",
+            remote_account_id=page_id,
+            details={"pageId": page_id, "page": "Northstar Studio", "apiVersion": "v25.0"},
+        )
+
+    monkeypatch.setattr("app.connectors.meta.MetaPagesAdapter.test_connection", fake_meta_test)
+    tested = client.post(f"/api/connectors/{account['id']}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == page_id
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Approved Facebook update",
+            body="This exact reviewed message should reach the connected Page.",
+            hashtags=["#local", "growth"],
+            rationale="Exercises the official Meta Pages publisher.",
+        )
+
+    delivered: list[dict] = []
+
+    async def fake_meta_publish(saved_page_id, api_version, saved_token, post):
+        assert saved_page_id == page_id
+        assert api_version == "v25.0"
+        assert saved_token == page_access_token
+        delivered.append(post)
+        return MetaPublishResult(remote_id=f"{page_id}_987654321")
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr("app.services.publishing.publish_facebook_page_post", fake_meta_publish)
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Facebook launch",
+            "channel": "facebook",
+            "tone": "Clear",
+            "objective": "Publish the approved Page update",
+            "notifyTelegram": False,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    approved = client.post(
+        f"/api/posts/{post['id']}/decision",
+        json={"decision": "approve", "revision": post["revision"]},
+    )
+    assert approved.status_code == 200
+
+    published = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert published.status_code == 200
+    final_post = next(item for item in published.json()["state"]["posts"] if item["id"] == post["id"])
+    assert final_post["status"] == "published"
+    assert final_post["remoteId"] == f"{page_id}_987654321"
+    assert final_post["remoteUrl"] is None
+    assert len(delivered) == 1
+    assert delivered[0]["revision"] == post["revision"]
+    assert delivered[0]["body"] == post["body"]
+    assert delivered[0]["hashtags"] == post["hashtags"]
+
+    duplicate = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert duplicate.status_code == 400
+    assert len(delivered) == 1
+
+    client.put("/api/scheduler", json={"paused": True})
+    scheduled_post = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Scheduled Facebook update",
+            "channel": "facebook",
+            "tone": "Clear",
+            "objective": "Verify the Meta Pages scheduler dispatch",
+            "notifyTelegram": False,
+        },
+    ).json()["post"]
+    client.post(
+        f"/api/posts/{scheduled_post['id']}/decision",
+        json={"decision": "approve", "revision": scheduled_post["revision"]},
+    )
+    scheduled = client.post(
+        f"/api/posts/{scheduled_post['id']}/schedule",
+        json={
+            "revision": scheduled_post["revision"],
+            "runAt": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        },
+    )
+    assert scheduled.status_code == 200
+    client.put("/api/scheduler", json={"paused": False})
+
+    deadline = time.monotonic() + 3
+    scheduled_state = client.get("/api/state").json()
+    while time.monotonic() < deadline:
+        scheduled_state = client.get("/api/state").json()
+        current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+        if current["status"] == "published":
+            break
+        time.sleep(0.05)
+    current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+    job = next(item for item in scheduled_state["jobs"] if item["id"] == scheduled.json()["job"]["id"])
+    assert current["status"] == "published"
+    assert current["remoteId"] == f"{page_id}_987654321"
+    assert job["status"] == "completed"
+    assert len(delivered) == 2
+
+
+def test_meta_payload_and_graph_endpoint_validation(monkeypatch) -> None:
+    import httpx
+
+    from app.errors import ExternalServiceError
+    from app.services.meta import (
+        approved_facebook_message,
+        meta_graph_request,
+        publish_facebook_page_post,
+        validate_meta_api_version,
+        validate_meta_graph_base_url,
+        validate_meta_page_id,
+    )
+
+    with pytest.raises(ExternalServiceError, match="HTTPS"):
+        validate_meta_graph_base_url("http://graph.example.com")
+    assert validate_meta_graph_base_url("http://127.0.0.1:4100/meta/") == "http://127.0.0.1:4100/meta"
+    with pytest.raises(ExternalServiceError, match="version"):
+        validate_meta_api_version("latest")
+    with pytest.raises(ExternalServiceError, match="Page ID"):
+        validate_meta_page_id("northstar-page")
+
+    assert approved_facebook_message(
+        {"body": "Approved body", "hashtags": ["#LocalGrowth", "Reviewed"]}
+    ) == "Approved body\n\n#LocalGrowth #Reviewed"
+
+    leaked_token = "page-token-that-must-not-leak"
+    request_capture: dict = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, endpoint, **kwargs):
+            request_capture.update({"method": method, "endpoint": endpoint, **kwargs})
+            return httpx.Response(
+                400,
+                json={"error": {"code": 190, "message": f"Invalid token {leaked_token}"}},
+            )
+
+    monkeypatch.setattr("app.services.meta.httpx.AsyncClient", FakeAsyncClient)
+    with pytest.raises(ExternalServiceError) as error:
+        asyncio.run(
+            meta_graph_request(
+                "123456789012345",
+                leaked_token,
+                api_version="v25.0",
+                params={"fields": "id,name"},
+            )
+        )
+    assert leaked_token not in str(error.value)
+    assert "[redacted]" in str(error.value)
+    assert leaked_token not in request_capture["endpoint"]
+    assert request_capture["headers"]["Authorization"] == f"Bearer {leaked_token}"
+
+    captured: dict = {}
+
+    async def fake_request(page_id, page_access_token, resource="", **kwargs):
+        captured.update(
+            {
+                "page_id": page_id,
+                "page_access_token": page_access_token,
+                "resource": resource,
+                **kwargs,
+            }
+        )
+        return {"id": "123456789012345_987654321"}
+
+    monkeypatch.setattr("app.services.meta.meta_graph_request", fake_request)
+    result = asyncio.run(
+        publish_facebook_page_post(
+            "123456789012345",
+            "v25.0",
+            "secret-page-token",
+            {"body": "Approved body", "hashtags": ["#LocalGrowth", "Reviewed"]},
+        )
+    )
+    assert result.remote_id == "123456789012345_987654321"
+    assert captured == {
+        "page_id": "123456789012345",
+        "page_access_token": "secret-page-token",
+        "resource": "feed",
+        "api_version": "v25.0",
+        "method": "POST",
+        "data": {"message": "Approved body\n\n#LocalGrowth #Reviewed"},
+        "timeout": 45,
+    }

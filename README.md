@@ -17,6 +17,8 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Send revision-bound Slack approval buttons and receive approve/reject decisions through an outbound-only Socket Mode listener.
 - Save and verify a WordPress connector with encrypted Application Password credentials.
 - Publish or schedule an exact approved Blog revision through the official WordPress REST API and retain its remote post link.
+- Save and verify a Facebook Page connector with an encrypted Page Access Token and a deliberately pinned Meta Graph API version.
+- Publish or schedule an exact approved Facebook revision through the official Page feed endpoint and retain its remote post ID.
 - Import allowed CSV, CRM, and LinkedIn exports into a durable local lead vault with source evidence.
 - Deduplicate leads by email, domain, phone, or business and location without silently overwriting existing values.
 - Search and qualify leads, preserve an audited suppression list, and block suppressed records from reactivation during import.
@@ -31,7 +33,7 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted m
 - Save derived SEO snapshots and score deltas in SQLite, export a selected report as JSON, and schedule one-off restart-safe audits with the local job worker.
 - Run the browser through one same-origin surface at `127.0.0.1:3000`; the API remains internal.
 
-Publishing adapters for LinkedIn, Instagram, Facebook, and X; outreach delivery connectors; rendered-page crawling; Lighthouse/PageSpeed and Search Console adapters; keyword maps; and approved SEO fix proposals remain roadmap work. Channel names can already be used to generate social drafts, but v0.9 publishes and schedules only to Telegram and verified WordPress sites. Outreach is deliberately export-only and never pretends an email was sent.
+Publishing adapters for LinkedIn, Instagram, and X; outreach delivery connectors; rendered-page crawling; Lighthouse/PageSpeed and Search Console adapters; keyword maps; and approved SEO fix proposals remain roadmap work. Channel names can already be used to generate social drafts, while verified Telegram, WordPress, and Facebook Page connections can publish or schedule exact approved revisions. Outreach is deliberately export-only and never pretends an email was sent.
 
 ## Native localhost run
 
@@ -62,6 +64,8 @@ Complete the checklist in the dashboard:
 Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
 
 For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. LocalGrowth stores the returned WordPress post ID and link in local state and the audit trail.
+
+For Facebook publishing, create a Page Access Token for the target Page with `pages_read_engagement` and `pages_manage_posts`, then add the numeric Page ID, pinned Graph API version, and token under **Integrations → Facebook Page publisher**. The official Meta `/me/accounts` flow can return the Page IDs and Page Access Tokens available to a user token. After **Save & test**, generate a `Facebook` draft and approve it; immediate and scheduled delivery both send only that exact revision. The token remains encrypted in the local vault, and only its presence flag reaches the browser. See the [official Meta Facebook API collection](https://www.postman.com/meta/facebook/documentation/r56bjfd/facebook-api).
 
 Open **Lead intelligence** to upload or paste CSV data. Recognized columns include `company`, `website`, `email`, `phone`, `location`, `source_url`, and common aliases. Choose `LinkedIn export` only for a file you exported or are authorized to use; LocalGrowth does not scrape LinkedIn pages. Duplicate rows merge into one local record while retaining their source evidence. Suppressing a lead preserves its identity so later imports cannot silently reactivate it.
 
@@ -123,7 +127,7 @@ pnpm test:e2e
 pnpm build
 ```
 
-The Playwright suite starts a real Next.js console, FastAPI service, and temporary SQLite database on loopback ports. It uses deterministic local stand-ins only for the external OpenAI-compatible and WordPress APIs, then verifies provider setup, draft generation, editing, revision-bound approval, publishing, persisted remote identity, automated WCAG A/AA checks, and mobile keyboard navigation. Browser artifacts are written under `output/playwright/`.
+The Playwright suite starts a real Next.js console, FastAPI service, and temporary SQLite database on loopback ports. It uses deterministic local stand-ins only for the external OpenAI-compatible, WordPress, and Meta Graph APIs, then verifies provider setup, draft generation, editing, revision-bound approval, multi-channel publishing, persisted remote identity, automated WCAG A/AA checks, and mobile keyboard navigation. Browser artifacts are written under `output/playwright/`.
 
 Install Chromium once with `pnpm test:e2e:install`. If the Playwright browser download is unavailable but Google Chrome is already installed, run with `LOCALGROWTH_E2E_BROWSER_CHANNEL=chrome` (PowerShell: `$env:LOCALGROWTH_E2E_BROWSER_CHANNEL='chrome'`).
 
@@ -140,7 +144,7 @@ pnpm check
 - `src/app` — Next.js dashboard and same-origin FastAPI proxy.
 - `src/components` — custom product UI built on shadcn primitives.
 - `src/lib` — browser-side domain contracts and utilities.
-- `backend/app` — FastAPI routes, local services, connector registry/vault, lead vault and ICP scoring, Places discovery, safe website crawler, Telegram/Slack listeners, WordPress publisher, durable scheduler, and domain operations.
+- `backend/app` — FastAPI routes, local services, connector registry/vault, lead vault and ICP scoring, Places discovery, safe website crawler, Telegram/Slack listeners, WordPress and Meta Pages publishers, durable scheduler, and domain operations.
 - `backend/alembic` — automatic SQLite schema migrations.
 - `backend/tests` — local API, connector-vault redaction, crawler safety, lead discovery, approval, scheduling, and publishing tests.
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.

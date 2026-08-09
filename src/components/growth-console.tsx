@@ -40,6 +40,10 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { LeadsWorkspace } from "@/components/leads-workspace";
+import {
+  MetaConnectorCard,
+  type MetaConnectorForm,
+} from "@/components/meta-connector-card";
 import { SeoWorkspace } from "@/components/seo-workspace";
 
 import { Badge } from "@/components/ui/badge";
@@ -526,6 +530,13 @@ export function GrowthConsole() {
     applicationPassword: "",
     enabled: true,
   });
+  const [metaForm, setMetaForm] = useState<MetaConnectorForm>({
+    name: "Company Facebook Page",
+    pageId: "",
+    apiVersion: "v25.0",
+    pageAccessToken: "",
+    enabled: true,
+  });
   const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
@@ -590,6 +601,16 @@ export function GrowthConsole() {
             enabled: wordpress.enabled,
           });
         }
+        const meta = next.connectors.accounts.find((account) => account.adapterId === "meta");
+        if (meta) {
+          setMetaForm({
+            name: meta.name,
+            pageId: String(meta.config.page_id ?? ""),
+            apiVersion: String(meta.config.api_version ?? "v25.0"),
+            pageAccessToken: "",
+            enabled: meta.enabled,
+          });
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -651,8 +672,13 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const metaAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "meta") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -1068,6 +1094,58 @@ export function GrowthConsole() {
     }
   }
 
+  async function saveMetaConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("meta-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (metaForm.pageAccessToken.trim()) {
+        secrets.page_access_token = metaForm.pageAccessToken.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        metaAccount ? `/api/connectors/${metaAccount.id}` : "/api/connectors",
+        {
+          method: metaAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "meta",
+            name: metaForm.name,
+            config: { page_id: metaForm.pageId, api_version: metaForm.apiVersion },
+            secrets,
+            scopes: ["pages_read_engagement", "pages_manage_posts"],
+            enabled: metaForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setMetaForm((current) => ({ ...current, pageAccessToken: "" }));
+      if (!quiet) toast.success("Facebook Page connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the Facebook Page connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testMetaConnection() {
+    const accountId = await saveMetaConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("meta-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Facebook Page connection test failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function removeConnector() {
     if (!deleteConnector) return;
     const adapterId = deleteConnector.adapterId;
@@ -1090,6 +1168,14 @@ export function GrowthConsole() {
           siteUrl: "",
           username: "",
           applicationPassword: "",
+          enabled: true,
+        });
+      } else if (adapterId === "meta") {
+        setMetaForm({
+          name: "Company Facebook Page",
+          pageId: "",
+          apiVersion: "v25.0",
+          pageAccessToken: "",
           enabled: true,
         });
       }
@@ -1408,7 +1494,8 @@ export function GrowthConsole() {
                         && ["queued", "retrying", "running"].includes(job.status),
                     );
                     const publisherReady = post.channel === "telegram"
-                      || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled);
+                      || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled)
+                      || (post.channel === "facebook" && metaAccount?.status === "verified" && metaAccount.enabled);
                     return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
@@ -1466,13 +1553,16 @@ export function GrowthConsole() {
                             {post.status === "approved" && publisherReady ? (
                               <>
                                 <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
-                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : "Publish now"}</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : "Publish now"}</Button>
                               </>
                             ) : null}
                             {post.status === "approved" && post.channel === "blog" && !publisherReady ? (
                               <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect WordPress</Button>
                             ) : null}
-                            {post.status === "approved" && !["telegram", "blog"].includes(post.channel) ? (
+                            {post.status === "approved" && post.channel === "facebook" && !publisherReady ? (
+                              <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect Facebook Page</Button>
+                            ) : null}
+                            {post.status === "approved" && !["telegram", "blog", "facebook"].includes(post.channel) ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
                             ) : null}
                             {post.status === "publishing" ? (
@@ -1742,6 +1832,16 @@ export function GrowthConsole() {
                 onRemove={() => wordpressAccount && setDeleteConnector(wordpressAccount)}
                 onSave={(event) => void saveWordPressConnector(event)}
                 onTest={() => void testWordPressConnection()}
+              />
+
+              <MetaConnectorCard
+                account={metaAccount}
+                busy={busy}
+                form={metaForm}
+                onChange={(patch) => setMetaForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => metaAccount && setDeleteConnector(metaAccount)}
+                onSave={(event) => void saveMetaConnector(event)}
+                onTest={() => void testMetaConnection()}
               />
 
               <div>

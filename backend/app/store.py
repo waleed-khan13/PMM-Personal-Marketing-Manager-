@@ -26,7 +26,7 @@ from app.models import (
 )
 from app.schemas import EditPostRequest, ProviderUpdate, SchedulePostRequest, TelegramUpdate, WorkspaceUpdate
 
-PUBLISHER_NAMES = {"telegram": "Telegram", "blog": "WordPress"}
+PUBLISHER_NAMES = {"telegram": "Telegram", "blog": "WordPress", "facebook": "Meta Pages"}
 
 
 def publisher_name(channel: str) -> str:
