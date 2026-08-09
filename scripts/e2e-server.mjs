@@ -19,8 +19,14 @@ const mockState = {
   wordpressPublishes: 0,
   metaAuthChecks: 0,
   metaPublishes: 0,
+  instagramAuthChecks: 0,
+  instagramContainers: 0,
+  instagramStatusChecks: 0,
+  instagramPublishes: 0,
   lastPublishedPost: null,
   lastFacebookPost: null,
+  lastInstagramContainer: null,
+  lastInstagramPublish: null,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -62,18 +68,31 @@ const mockServer = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
       mockState.generationRequests += 1;
       await readJson(request);
-      const facebookDraft = mockState.generationRequests > 1;
+      const facebookDraft = mockState.generationRequests === 2;
+      const instagramDraft = mockState.generationRequests > 2;
       sendJson(response, 200, {
         choices: [
           {
             message: {
               content: JSON.stringify({
-                title: facebookDraft ? "A useful Facebook Page update" : "A practical local growth checklist",
-                body: facebookDraft
+                title: instagramDraft
+                  ? "A reviewed Instagram image update"
+                  : facebookDraft
+                    ? "A useful Facebook Page update"
+                    : "A practical local growth checklist",
+                body: instagramDraft
+                  ? "Show one practical campaign idea, keep the caption useful, and publish the exact reviewed image."
+                  : facebookDraft
                   ? "Share one useful local insight, invite a relevant response, and keep the final post human-reviewed."
                   : "Start with one clear customer problem, publish a useful answer, and review the result before the next post.",
-                hashtags: facebookDraft ? ["#LocalBusiness", "#FacebookMarketing"] : ["#LocalGrowth", "#SmallBusiness"],
-                rationale: facebookDraft
+                hashtags: instagramDraft
+                  ? ["#InstagramForBusiness", "#HumanReviewed"]
+                  : facebookDraft
+                    ? ["#LocalBusiness", "#FacebookMarketing"]
+                    : ["#LocalGrowth", "#SmallBusiness"],
+                rationale: instagramDraft
+                  ? "A public image URL and exact approved caption exercise Instagram's container workflow."
+                  : facebookDraft
                   ? "A concise, reviewed update is appropriate for the connected Facebook Page."
                   : "A concrete checklist gives a small business an immediately useful next step.",
               }),
@@ -129,6 +148,68 @@ const mockServer = createServer(async (request, response) => {
         new URLSearchParams(Buffer.concat(chunks).toString("utf8")),
       );
       sendJson(response, 200, { id: "123456789012345_987654321" });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/instagram/v25.0/17841400000000000") {
+      mockState.instagramAuthChecks += 1;
+      if (request.headers.authorization !== "Bearer e2e-instagram-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      if (url.searchParams.get("fields") !== "id,username,account_type") {
+        sendJson(response, 400, { error: { code: 100, message: "Unsupported fields request." } });
+        return;
+      }
+      sendJson(response, 200, {
+        id: "17841400000000000",
+        username: "northstarstudio",
+        account_type: "BUSINESS",
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/instagram/v25.0/17841400000000000/media") {
+      mockState.instagramContainers += 1;
+      if (request.headers.authorization !== "Bearer e2e-instagram-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      mockState.lastInstagramContainer = Object.fromEntries(
+        new URLSearchParams(Buffer.concat(chunks).toString("utf8")),
+      );
+      sendJson(response, 200, { id: "18000000000000010" });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/instagram/v25.0/18000000000000010") {
+      mockState.instagramStatusChecks += 1;
+      if (request.headers.authorization !== "Bearer e2e-instagram-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      if (url.searchParams.get("fields") !== "status_code,status") {
+        sendJson(response, 400, { error: { code: 100, message: "Unsupported status fields." } });
+        return;
+      }
+      sendJson(response, 200, { status_code: "FINISHED", status: "Finished" });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/instagram/v25.0/17841400000000000/media_publish") {
+      mockState.instagramPublishes += 1;
+      if (request.headers.authorization !== "Bearer e2e-instagram-access-token") {
+        sendJson(response, 401, { error: { code: 190, message: "Invalid OAuth access token." } });
+        return;
+      }
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      mockState.lastInstagramPublish = Object.fromEntries(
+        new URLSearchParams(Buffer.concat(chunks).toString("utf8")),
+      );
+      sendJson(response, 200, { id: "18000000000000011" });
       return;
     }
 
@@ -211,6 +292,7 @@ launch(
     LOCALGROWTH_SCHEDULER_INTERVAL: "0.25",
     LOCALGROWTH_SLACK_SOCKET_MODE: "0",
     LOCALGROWTH_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
+    LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,
   },
 );
 

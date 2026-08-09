@@ -49,6 +49,7 @@ export interface GeneratedPost {
   title: string;
   body: string;
   hashtags: string[];
+  mediaUrl: string | null;
   rationale: string;
   status: PostStatus;
   providerKind: ProviderKind;

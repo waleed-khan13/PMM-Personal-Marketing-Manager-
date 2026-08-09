@@ -1526,3 +1526,316 @@ def test_meta_payload_and_graph_endpoint_validation(monkeypatch) -> None:
         "data": {"message": "Approved body\n\n#LocalGrowth #Reviewed"},
         "timeout": 45,
     }
+
+
+def test_instagram_connector_publishes_exact_approved_image_revision(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
+    from app.services.instagram import InstagramPublishResult
+
+    catalog = client.get("/api/connectors").json()["catalog"]
+    manifest = next(item for item in catalog if item["adapterId"] == "instagram")
+    assert manifest["name"] == "Instagram Professional"
+    assert manifest["availability"] == "available"
+    assert manifest["capabilities"] == ["publish"]
+    assert manifest["requiredScopes"] == [
+        "instagram_business_basic",
+        "instagram_business_content_publish",
+    ]
+
+    user_id = "17841400000000000"
+    access_token = "encrypted-instagram-access-token"
+    image_url = "https://cdn.example.com/campaign.jpg?signature=approved"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "instagram",
+            "name": "Company Instagram",
+            "config": {"user_id": user_id, "api_version": "v25.0"},
+            "secrets": {"access_token": access_token},
+            "scopes": ["instagram_business_basic", "instagram_business_content_publish"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    assert account["secretStatus"] == {"access_token": True}
+    assert access_token not in created.text
+
+    async def fake_instagram_test(_self, config, secrets):
+        assert config == {"user_id": user_id, "api_version": "v25.0"}
+        assert secrets == {"access_token": access_token}
+        return ConnectorTestResult(
+            ok=True,
+            message="Connected to Instagram @northstarstudio.",
+            remote_account_id=user_id,
+            details={
+                "userId": user_id,
+                "username": "northstarstudio",
+                "accountType": "BUSINESS",
+                "apiVersion": "v25.0",
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.connectors.instagram.InstagramAdapter.test_connection",
+        fake_instagram_test,
+    )
+    tested = client.post(f"/api/connectors/{account['id']}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == user_id
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Approved Instagram image",
+            body="This exact reviewed caption should reach the professional account.",
+            hashtags=["#local", "growth"],
+            rationale="Exercises the official Instagram container publisher.",
+        )
+
+    delivered: list[dict] = []
+
+    async def fake_instagram_publish(saved_user_id, api_version, saved_token, post):
+        assert saved_user_id == user_id
+        assert api_version == "v25.0"
+        assert saved_token == access_token
+        delivered.append(post)
+        return InstagramPublishResult(remote_id="18000000000000001")
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr("app.services.publishing.publish_instagram_image", fake_instagram_publish)
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Instagram launch",
+            "channel": "instagram",
+            "tone": "Clear",
+            "objective": "Publish the approved image and caption",
+            "mediaUrl": image_url,
+            "notifyTelegram": False,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    assert post["mediaUrl"] == image_url
+    approved = client.post(
+        f"/api/posts/{post['id']}/decision",
+        json={"decision": "approve", "revision": post["revision"]},
+    )
+    assert approved.status_code == 200
+
+    published = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert published.status_code == 200
+    final_post = next(item for item in published.json()["state"]["posts"] if item["id"] == post["id"])
+    assert final_post["status"] == "published"
+    assert final_post["remoteId"] == "18000000000000001"
+    assert final_post["mediaUrl"] == image_url
+    assert len(delivered) == 1
+    assert delivered[0]["revision"] == post["revision"]
+    assert delivered[0]["body"] == post["body"]
+    assert delivered[0]["hashtags"] == post["hashtags"]
+    assert delivered[0]["mediaUrl"] == image_url
+
+    duplicate = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert duplicate.status_code == 400
+    assert len(delivered) == 1
+
+    client.put("/api/scheduler", json={"paused": True})
+    scheduled_url = "https://cdn.example.com/scheduled.jpg"
+    scheduled_post = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Scheduled Instagram image",
+            "channel": "instagram",
+            "tone": "Clear",
+            "objective": "Verify the Instagram scheduler dispatch",
+            "mediaUrl": scheduled_url,
+            "notifyTelegram": False,
+        },
+    ).json()["post"]
+    client.post(
+        f"/api/posts/{scheduled_post['id']}/decision",
+        json={"decision": "approve", "revision": scheduled_post["revision"]},
+    )
+    scheduled = client.post(
+        f"/api/posts/{scheduled_post['id']}/schedule",
+        json={
+            "revision": scheduled_post["revision"],
+            "runAt": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        },
+    )
+    assert scheduled.status_code == 200
+    client.put("/api/scheduler", json={"paused": False})
+
+    deadline = time.monotonic() + 3
+    scheduled_state = client.get("/api/state").json()
+    while time.monotonic() < deadline:
+        scheduled_state = client.get("/api/state").json()
+        current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+        if current["status"] == "published":
+            break
+        time.sleep(0.05)
+    current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+    job = next(item for item in scheduled_state["jobs"] if item["id"] == scheduled.json()["job"]["id"])
+    assert current["status"] == "published"
+    assert current["remoteId"] == "18000000000000001"
+    assert current["mediaUrl"] == scheduled_url
+    assert job["status"] == "completed"
+    assert len(delivered) == 2
+
+
+def test_instagram_media_validation_and_container_publish_flow(monkeypatch) -> None:
+    import httpx
+
+    from app.errors import ExternalServiceError
+    from app.services.instagram import (
+        approved_instagram_caption,
+        instagram_graph_request,
+        publish_instagram_image,
+        validate_instagram_graph_base_url,
+        validate_instagram_media_url,
+        validate_instagram_user_id,
+    )
+
+    with pytest.raises(ExternalServiceError, match="HTTPS"):
+        validate_instagram_media_url("http://cdn.example.com/image.jpg")
+    with pytest.raises(ExternalServiceError, match="localhost"):
+        validate_instagram_media_url("https://localhost/image.jpg")
+    with pytest.raises(ExternalServiceError, match="public host"):
+        validate_instagram_media_url("https://192.168.1.20/image.jpg")
+    assert validate_instagram_media_url(
+        "https://cdn.example.com/image.jpg?signature=one-time"
+    ) == "https://cdn.example.com/image.jpg?signature=one-time"
+    with pytest.raises(ExternalServiceError, match="HTTPS"):
+        validate_instagram_graph_base_url("http://graph.example.com")
+    assert validate_instagram_graph_base_url(
+        "http://127.0.0.1:4100/instagram/"
+    ) == "http://127.0.0.1:4100/instagram"
+    with pytest.raises(ExternalServiceError, match="Account ID"):
+        validate_instagram_user_id("northstar")
+
+    assert approved_instagram_caption(
+        {"body": "Approved caption", "hashtags": ["#LocalGrowth", "Reviewed"]}
+    ) == "Approved caption\n\n#LocalGrowth #Reviewed"
+    with pytest.raises(ExternalServiceError, match="2,200"):
+        approved_instagram_caption({"body": "x" * 2_201, "hashtags": []})
+
+    from app.schemas import EditPostRequest, GeneratePostRequest
+
+    with pytest.raises(ValueError, match="public HTTPS"):
+        GeneratePostRequest(
+            topic="Unsafe image",
+            channel="instagram",
+            mediaUrl="javascript:alert(1)",
+        )
+    with pytest.raises(ValueError, match="localhost"):
+        EditPostRequest(
+            title="Unsafe image",
+            body="Reviewed body",
+            mediaUrl="https://localhost/image.jpg",
+        )
+
+    leaked_token = "instagram-token-that-must-not-leak"
+    request_capture: dict = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, endpoint, **kwargs):
+            request_capture.update({"method": method, "endpoint": endpoint, **kwargs})
+            return httpx.Response(
+                400,
+                json={"error": {"code": 190, "message": f"Invalid token {leaked_token}"}},
+            )
+
+    monkeypatch.setattr("app.services.instagram.httpx.AsyncClient", FakeAsyncClient)
+    with pytest.raises(ExternalServiceError) as error:
+        asyncio.run(
+            instagram_graph_request(
+                "17841400000000000",
+                leaked_token,
+                api_version="v25.0",
+                params={"fields": "id,username,account_type"},
+            )
+        )
+    assert leaked_token not in str(error.value)
+    assert "[redacted]" in str(error.value)
+    assert leaked_token not in request_capture["endpoint"]
+    assert request_capture["headers"]["Authorization"] == f"Bearer {leaked_token}"
+
+    calls: list[dict] = []
+
+    async def fake_request(subject_id, access_token, resource="", **kwargs):
+        calls.append(
+            {
+                "subject_id": subject_id,
+                "access_token": access_token,
+                "resource": resource,
+                **kwargs,
+            }
+        )
+        if resource == "media":
+            return {"id": "18000000000000010"}
+        if subject_id == "18000000000000010":
+            return {"status_code": "FINISHED", "status": "Finished"}
+        return {"id": "18000000000000011"}
+
+    monkeypatch.setattr("app.services.instagram.instagram_graph_request", fake_request)
+    result = asyncio.run(
+        publish_instagram_image(
+            "17841400000000000",
+            "v25.0",
+            "secret-instagram-token",
+            {
+                "body": "Approved caption",
+                "hashtags": ["#LocalGrowth", "Reviewed"],
+                "mediaUrl": "https://cdn.example.com/image.jpg?signature=one-time",
+            },
+            status_delay=0,
+        )
+    )
+    assert result.remote_id == "18000000000000011"
+    assert calls == [
+        {
+            "subject_id": "17841400000000000",
+            "access_token": "secret-instagram-token",
+            "resource": "media",
+            "api_version": "v25.0",
+            "method": "POST",
+            "data": {
+                "image_url": "https://cdn.example.com/image.jpg?signature=one-time",
+                "caption": "Approved caption\n\n#LocalGrowth #Reviewed",
+            },
+            "timeout": 45,
+        },
+        {
+            "subject_id": "18000000000000010",
+            "access_token": "secret-instagram-token",
+            "resource": "",
+            "api_version": "v25.0",
+            "params": {"fields": "status_code,status"},
+            "timeout": 15,
+        },
+        {
+            "subject_id": "17841400000000000",
+            "access_token": "secret-instagram-token",
+            "resource": "media_publish",
+            "api_version": "v25.0",
+            "method": "POST",
+            "data": {"creation_id": "18000000000000010"},
+            "timeout": 45,
+        },
+    ]

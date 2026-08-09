@@ -33,7 +33,7 @@ async function expectNoAccessibilityViolations(page: Page, testInfo: TestInfo, n
   expect(violations, `${name} has automated WCAG A/AA violations`).toEqual([]);
 }
 
-test("runs real approved WordPress and Facebook publishing workflows", async ({ page }) => {
+test("runs real approved WordPress, Facebook, and Instagram publishing workflows", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
 
@@ -210,6 +210,82 @@ test("runs real approved WordPress and Facebook publishing workflows", async ({ 
   });
   expect(finalMockState.lastFacebookPost.message).toContain("Share one useful local insight");
   expect(finalMockState.lastFacebookPost.message).toContain("#FacebookMarketing");
+
+  await navigate(page, "Integrations", "Connections");
+  const instagramForm = page.getByLabel("Professional Account ID").locator("xpath=ancestor::form");
+  await instagramForm.getByLabel("Connection name").fill("E2E Instagram");
+  await instagramForm.getByLabel("Professional Account ID").fill("17841400000000000");
+  await instagramForm.getByLabel("Graph API version").fill("v25.0");
+  await instagramForm.getByLabel("Instagram Access Token").fill("e2e-instagram-access-token");
+  await instagramForm.getByRole("button", { name: "Save & test" }).click();
+  await expect(page.getByText("Connected to Instagram @northstarstudio.")).toBeVisible();
+
+  const instagramImageUrl = "https://cdn.example.test/e2e-instagram.jpg?approved=true";
+  await navigate(page, "Create content", "Create a draft");
+  await page.getByLabel("Topic or source brief").fill(
+    "Create one useful single-image update for our professional Instagram account.",
+  );
+  await page.getByLabel("Channel").click();
+  await page.getByRole("option", { name: "Instagram" }).click();
+  await page.getByLabel("Public image URL").fill(instagramImageUrl);
+  await expect(page.getByRole("img", { name: "Instagram image preview" })).toBeVisible();
+
+  const instagramGenerateResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/posts/generate") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Generate review draft" }).click();
+  await expect((await instagramGenerateResponse).status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: "Approval queue" })).toBeVisible();
+  await page.getByRole("button", { name: /^all / }).click();
+
+  const instagramTitle = "A reviewed Instagram image update";
+  const instagramCard = page
+    .getByRole("heading", { level: 2, name: instagramTitle })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(instagramCard.getByRole("img", { name: `Media preview for ${instagramTitle}` })).toBeVisible();
+  await instagramCard.getByRole("button", { name: "Approve" }).click();
+  await expect(instagramCard.getByText("approved", { exact: true })).toBeVisible();
+
+  const instagramPublishResponse = page.waitForResponse(
+    (response) => /\/api\/posts\/[^/]+\/publish$/.test(response.url()) && response.request().method() === "POST",
+  );
+  await instagramCard.getByRole("button", { name: "Publish to Instagram" }).click();
+  await expect((await instagramPublishResponse).status()).toBe(200);
+  await expect(instagramCard.getByText("published", { exact: true })).toBeVisible();
+  await expect(instagramCard.getByText("remote:18000000000000011", { exact: true })).toBeVisible();
+
+  const instagramStateResponse = await page.request.get("/api/state");
+  const instagramState = (await instagramStateResponse.json()) as PublicAppState;
+  expect(instagramState.posts).toHaveLength(3);
+  expect(instagramState.posts.find((post) => post.channel === "instagram")).toMatchObject({
+    mediaUrl: instagramImageUrl,
+    remoteId: "18000000000000011",
+    revision: 1,
+    status: "published",
+    title: instagramTitle,
+  });
+
+  const instagramMockResponse = await page.request.get(`${mockBaseUrl}/__e2e/state`);
+  const instagramMockState = (await instagramMockResponse.json()) as {
+    generationRequests: number;
+    instagramAuthChecks: number;
+    instagramContainers: number;
+    instagramPublishes: number;
+    instagramStatusChecks: number;
+    lastInstagramContainer: { caption: string; image_url: string };
+    lastInstagramPublish: { creation_id: string };
+  };
+  expect(instagramMockState).toMatchObject({
+    generationRequests: 3,
+    instagramAuthChecks: 1,
+    instagramContainers: 1,
+    instagramPublishes: 1,
+    instagramStatusChecks: 1,
+  });
+  expect(instagramMockState.lastInstagramContainer.image_url).toBe(instagramImageUrl);
+  expect(instagramMockState.lastInstagramContainer.caption).toContain("Show one practical campaign idea");
+  expect(instagramMockState.lastInstagramContainer.caption).toContain("#HumanReviewed");
+  expect(instagramMockState.lastInstagramPublish).toEqual({ creation_id: "18000000000000010" });
 });
 
 test("passes automated accessibility checks in core workflow views", async ({ page }, testInfo) => {

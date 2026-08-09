@@ -26,7 +26,12 @@ from app.models import (
 )
 from app.schemas import EditPostRequest, ProviderUpdate, SchedulePostRequest, TelegramUpdate, WorkspaceUpdate
 
-PUBLISHER_NAMES = {"telegram": "Telegram", "blog": "WordPress", "facebook": "Meta Pages"}
+PUBLISHER_NAMES = {
+    "telegram": "Telegram",
+    "blog": "WordPress",
+    "facebook": "Meta Pages",
+    "instagram": "Instagram",
+}
 
 
 def publisher_name(channel: str) -> str:
@@ -175,6 +180,7 @@ def _import_legacy_json(session: Session, path: Path) -> None:
                 title=_text(raw_post.get("title"), 160, "Imported draft"),
                 body=_text(raw_post.get("body"), 12_000),
                 hashtags=[_text(tag, 80) for tag in hashtags if _text(tag, 80)][:20],
+                media_url=_text(raw_post.get("mediaUrl"), 2_048) or None,
                 rationale=_text(raw_post.get("rationale"), 500),
                 status=status if status in allowed_statuses else "pending",
                 provider_kind=_text(raw_post.get("providerKind"), 40, "ollama"),
@@ -266,6 +272,7 @@ def _post_dict(post: Post) -> dict[str, Any]:
         "title": post.title,
         "body": post.body,
         "hashtags": list(post.hashtags or []),
+        "mediaUrl": post.media_url,
         "rationale": post.rationale,
         "status": post.status,
         "providerKind": post.provider_kind,
@@ -509,6 +516,7 @@ def create_post(
         title=content["title"],
         body=content["body"],
         hashtags=content.get("hashtags", []),
+        media_url=request.get("media_url") or None,
         rationale=content.get("rationale", ""),
         status="pending",
         provider_kind=provider["kind"],
@@ -568,9 +576,12 @@ def edit_post(post_id: str, payload: EditPostRequest) -> None:
             raise AppError("Published content is immutable. Create a new draft instead.")
         if post.status == "publishing":
             raise AppError("This draft is currently being published.")
+        if post.channel == "instagram" and not payload.media_url:
+            raise AppError("Instagram drafts require a public image URL.")
         post.title = payload.title
         post.body = payload.body
         post.hashtags = payload.hashtags
+        post.media_url = payload.media_url or None
         post.status = "pending"
         post.revision += 1
         post.approved_at = None

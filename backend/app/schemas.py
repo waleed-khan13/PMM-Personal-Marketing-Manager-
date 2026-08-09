@@ -6,6 +6,18 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
+from app.errors import ExternalServiceError
+from app.services.instagram import validate_instagram_media_url
+
+
+def _validate_post_media_url(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        return validate_instagram_media_url(value)
+    except ExternalServiceError as error:
+        raise ValueError(error.message) from error
+
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, str_strip_whitespace=True)
@@ -39,14 +51,26 @@ class GeneratePostRequest(ApiModel):
     channel: Literal["linkedin", "instagram", "facebook", "x", "telegram", "blog"]
     tone: str = Field(default="Clear and confident", max_length=160)
     objective: str = Field(default="Build useful awareness", max_length=500)
+    media_url: str | None = Field(default=None, max_length=2_048)
     notify_telegram: bool = True
     notify_slack: bool = False
+
+    _validate_media_url = field_validator("media_url")(_validate_post_media_url)
+
+    @model_validator(mode="after")
+    def require_instagram_media(self) -> Self:
+        if self.channel == "instagram" and not self.media_url:
+            raise ValueError("Instagram drafts require a public image URL.")
+        return self
 
 
 class EditPostRequest(ApiModel):
     title: str = Field(min_length=1, max_length=160)
     body: str = Field(min_length=1, max_length=12_000)
     hashtags: list[str] = Field(default_factory=list, max_length=20)
+    media_url: str | None = Field(default=None, max_length=2_048)
+
+    _validate_media_url = field_validator("media_url")(_validate_post_media_url)
 
     @field_validator("hashtags")
     @classmethod

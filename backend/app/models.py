@@ -80,6 +80,7 @@ class Post(Base):
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     hashtags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    media_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     rationale: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
     provider_kind: Mapped[str] = mapped_column(String(40), nullable=False)

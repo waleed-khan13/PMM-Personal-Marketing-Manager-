@@ -41,6 +41,10 @@ import { toast } from "sonner";
 
 import { LeadsWorkspace } from "@/components/leads-workspace";
 import {
+  InstagramConnectorCard,
+  type InstagramConnectorForm,
+} from "@/components/instagram-connector-card";
+import {
   MetaConnectorCard,
   type MetaConnectorForm,
 } from "@/components/meta-connector-card";
@@ -186,6 +190,14 @@ const channelLabels: Record<ContentChannel, string> = {
 };
 
 const channels = Object.entries(channelLabels) as [ContentChannel, string][];
+
+function publisherDisplayName(channel: ContentChannel) {
+  if (channel === "blog") return "WordPress";
+  if (channel === "facebook") return "Facebook";
+  if (channel === "instagram") return "Instagram";
+  if (channel === "telegram") return "Telegram";
+  return channelLabels[channel];
+}
 
 const statusStyles: Record<PostStatus, string> = {
   pending: "border-amber-500/25 bg-amber-500/8 text-amber-300",
@@ -434,6 +446,37 @@ function Field({
   );
 }
 
+function MediaPreview({ url, label = "Instagram image preview" }: { url: string; label?: string }) {
+  if (!url.trim()) return null;
+  let safeUrl: string;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password || parsed.hash) {
+      return null;
+    }
+    safeUrl = parsed.toString();
+  } catch {
+    return null;
+  }
+  return (
+    <div className="overflow-hidden rounded-md border border-fuchsia-500/20 bg-black">
+      <div
+        aria-label={label}
+        className="aspect-square w-full bg-zinc-950 bg-cover bg-center"
+        role="img"
+        style={{ backgroundImage: `url(${JSON.stringify(safeUrl)})` }}
+      />
+      <div className="flex items-center justify-between gap-3 border-t border-zinc-900 px-3 py-2.5">
+        <p className="min-w-0 truncate font-mono text-[10px] text-zinc-600">{safeUrl}</p>
+        <a className="shrink-0 text-zinc-500 hover:text-zinc-200" href={safeUrl} rel="noreferrer" target="_blank">
+          <span className="sr-only">Open Instagram image in a new tab</span>
+          <SquareArrowOutUpRight className="size-3.5" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function SetupRow({
   complete,
   label,
@@ -496,7 +539,7 @@ export function GrowthConsole() {
   const [busy, setBusy] = useState<string | null>(null);
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [editPost, setEditPost] = useState<GeneratedPost | null>(null);
-  const [editForm, setEditForm] = useState({ title: "", body: "", hashtags: "" });
+  const [editForm, setEditForm] = useState({ title: "", body: "", hashtags: "", mediaUrl: "" });
   const [scheduleTarget, setScheduleTarget] = useState<GeneratedPost | null>(null);
   const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
   const [providerVerified, setProviderVerified] = useState(false);
@@ -537,12 +580,20 @@ export function GrowthConsole() {
     pageAccessToken: "",
     enabled: true,
   });
+  const [instagramForm, setInstagramForm] = useState<InstagramConnectorForm>({
+    name: "Company Instagram",
+    userId: "",
+    apiVersion: "v25.0",
+    accessToken: "",
+    enabled: true,
+  });
   const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
     channel: ContentChannel;
     tone: string;
     objective: string;
+    mediaUrl: string;
     notifyTelegram: boolean;
     notifySlack: boolean;
   }>({
@@ -550,6 +601,7 @@ export function GrowthConsole() {
     channel: "linkedin",
     tone: "Clear, useful and confident",
     objective: "Build awareness and start relevant conversations",
+    mediaUrl: "",
     notifyTelegram: true,
     notifySlack: false,
   });
@@ -609,6 +661,16 @@ export function GrowthConsole() {
             apiVersion: String(meta.config.api_version ?? "v25.0"),
             pageAccessToken: "",
             enabled: meta.enabled,
+          });
+        }
+        const instagram = next.connectors.accounts.find((account) => account.adapterId === "instagram");
+        if (instagram) {
+          setInstagramForm({
+            name: instagram.name,
+            userId: String(instagram.config.user_id ?? ""),
+            apiVersion: String(instagram.config.api_version ?? "v25.0"),
+            accessToken: "",
+            enabled: instagram.enabled,
           });
         }
       })
@@ -677,8 +739,13 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const instagramAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "instagram") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -800,7 +867,7 @@ export function GrowthConsole() {
         body: JSON.stringify(generateForm),
       });
       setAppState(response.state);
-      setGenerateForm((current) => ({ ...current, topic: "" }));
+      setGenerateForm((current) => ({ ...current, topic: "", mediaUrl: "" }));
       toast.success("Draft generated", { description: `${channelLabels[response.post.channel]} · ${response.post.model}` });
       const notifications = response.notifications ?? (
         response.notification ? [{ channel: "telegram" as const, ...response.notification }] : []
@@ -866,7 +933,7 @@ export function GrowthConsole() {
         body: JSON.stringify({ revision: post.revision }),
       });
       setAppState(response.state);
-      toast.success(`Published to ${post.channel === "blog" ? "WordPress" : "Telegram"}`);
+      toast.success(`Published to ${publisherDisplayName(post.channel)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Publish failed.");
       await loadState();
@@ -948,7 +1015,12 @@ export function GrowthConsole() {
 
   function openEdit(post: GeneratedPost) {
     setEditPost(post);
-    setEditForm({ title: post.title, body: post.body, hashtags: post.hashtags.join(" ") });
+    setEditForm({
+      title: post.title,
+      body: post.body,
+      hashtags: post.hashtags.join(" "),
+      mediaUrl: post.mediaUrl ?? "",
+    });
   }
 
   async function saveEdit(event: FormEvent) {
@@ -962,7 +1034,12 @@ export function GrowthConsole() {
         .filter(Boolean);
       const response = await requestJson<StateResponse>(`/api/posts/${editPost.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ title: editForm.title, body: editForm.body, hashtags }),
+        body: JSON.stringify({
+          title: editForm.title,
+          body: editForm.body,
+          hashtags,
+          mediaUrl: editForm.mediaUrl || null,
+        }),
       });
       setAppState(response.state);
       setEditPost(null);
@@ -1146,6 +1223,58 @@ export function GrowthConsole() {
     }
   }
 
+  async function saveInstagramConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("instagram-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (instagramForm.accessToken.trim()) {
+        secrets.access_token = instagramForm.accessToken.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        instagramAccount ? `/api/connectors/${instagramAccount.id}` : "/api/connectors",
+        {
+          method: instagramAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "instagram",
+            name: instagramForm.name,
+            config: { user_id: instagramForm.userId, api_version: instagramForm.apiVersion },
+            secrets,
+            scopes: ["instagram_business_basic", "instagram_business_content_publish"],
+            enabled: instagramForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setInstagramForm((current) => ({ ...current, accessToken: "" }));
+      if (!quiet) toast.success("Instagram connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the Instagram connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testInstagramConnection() {
+    const accountId = await saveInstagramConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("instagram-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Instagram connection test failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function removeConnector() {
     if (!deleteConnector) return;
     const adapterId = deleteConnector.adapterId;
@@ -1176,6 +1305,14 @@ export function GrowthConsole() {
           pageId: "",
           apiVersion: "v25.0",
           pageAccessToken: "",
+          enabled: true,
+        });
+      } else if (adapterId === "instagram") {
+        setInstagramForm({
+          name: "Company Instagram",
+          userId: "",
+          apiVersion: "v25.0",
+          accessToken: "",
           enabled: true,
         });
       }
@@ -1384,6 +1521,28 @@ export function GrowthConsole() {
                     <Field htmlFor="objective" label="Objective">
                       <Input id="objective" maxLength={500} onChange={(event) => setGenerateForm((current) => ({ ...current, objective: event.target.value }))} value={generateForm.objective} />
                     </Field>
+                    {generateForm.channel === "instagram" ? (
+                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                        <div className="space-y-3">
+                          <Field htmlFor="media-url" label="Public image URL" hint="Required for Instagram">
+                            <Input
+                              id="media-url"
+                              onChange={(event) => setGenerateForm((current) => ({ ...current, mediaUrl: event.target.value }))}
+                              pattern="https://.+"
+                              placeholder="https://cdn.example.com/campaign-image.jpg"
+                              required
+                              type="url"
+                              value={generateForm.mediaUrl}
+                            />
+                          </Field>
+                          <div className="flex gap-2 rounded-md border border-fuchsia-500/20 bg-fuchsia-500/5 p-3 text-xs leading-5 text-fuchsia-100">
+                            <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+                            Meta fetches this image during publishing, so it must be reachable over public HTTPS. Localhost and private network URLs are rejected.
+                          </div>
+                        </div>
+                        <MediaPreview url={generateForm.mediaUrl} />
+                      </div>
+                    ) : null}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="flex items-center justify-between gap-5 rounded-md border border-zinc-800 bg-black px-4 py-3.5">
                         <div>
@@ -1417,7 +1576,7 @@ export function GrowthConsole() {
                       </div>
                     ) : null}
                     <div className="flex justify-end border-t border-zinc-900 pt-5">
-                      <Button disabled={!appState.provider.configured || !generateForm.topic.trim() || busy === "generate"} size="lg" type="submit">
+                      <Button disabled={!appState.provider.configured || !generateForm.topic.trim() || (generateForm.channel === "instagram" && !generateForm.mediaUrl.trim()) || busy === "generate"} size="lg" type="submit">
                         {busy === "generate" ? <Loader2 className="animate-spin" /> : <Sparkles />}
                         {busy === "generate" ? "Generating…" : "Generate review draft"}
                       </Button>
@@ -1495,7 +1654,8 @@ export function GrowthConsole() {
                     );
                     const publisherReady = post.channel === "telegram"
                       || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled)
-                      || (post.channel === "facebook" && metaAccount?.status === "verified" && metaAccount.enabled);
+                      || (post.channel === "facebook" && metaAccount?.status === "verified" && metaAccount.enabled)
+                      || (post.channel === "instagram" && Boolean(post.mediaUrl) && instagramAccount?.status === "verified" && instagramAccount.enabled);
                     return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
@@ -1511,6 +1671,7 @@ export function GrowthConsole() {
                         <div className="flex-1">
                           <h2 className="text-base font-semibold leading-6 text-zinc-100">{post.title}</h2>
                           <p className="mt-3 max-w-[75ch] whitespace-pre-wrap text-sm leading-6 text-zinc-400">{post.body}</p>
+                          {post.mediaUrl ? <div className="mt-4 max-w-64"><MediaPreview label={`Media preview for ${post.title}`} url={post.mediaUrl} /></div> : null}
                           {post.hashtags.length > 0 ? (
                             <div className="mt-4 flex flex-wrap gap-1.5">
                               {post.hashtags.map((tag) => <span className="rounded bg-zinc-900 px-1.5 py-1 text-[11px] text-zinc-500" key={tag}>#{tag.replace(/^#/, "")}</span>)}
@@ -1553,7 +1714,7 @@ export function GrowthConsole() {
                             {post.status === "approved" && publisherReady ? (
                               <>
                                 <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
-                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : "Publish now"}</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : post.channel === "instagram" ? "Publish to Instagram" : "Publish now"}</Button>
                               </>
                             ) : null}
                             {post.status === "approved" && post.channel === "blog" && !publisherReady ? (
@@ -1562,7 +1723,13 @@ export function GrowthConsole() {
                             {post.status === "approved" && post.channel === "facebook" && !publisherReady ? (
                               <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect Facebook Page</Button>
                             ) : null}
-                            {post.status === "approved" && !["telegram", "blog", "facebook"].includes(post.channel) ? (
+                            {post.status === "approved" && post.channel === "instagram" && !publisherReady && !post.mediaUrl ? (
+                              <Button onClick={() => openEdit(post)} size="sm" variant="outline"><Pencil /> Add image URL</Button>
+                            ) : null}
+                            {post.status === "approved" && post.channel === "instagram" && !publisherReady && Boolean(post.mediaUrl) ? (
+                              <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect Instagram</Button>
+                            ) : null}
+                            {post.status === "approved" && !["telegram", "blog", "facebook", "instagram"].includes(post.channel) ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
                             ) : null}
                             {post.status === "publishing" ? (
@@ -1844,6 +2011,16 @@ export function GrowthConsole() {
                 onTest={() => void testMetaConnection()}
               />
 
+              <InstagramConnectorCard
+                account={instagramAccount}
+                busy={busy}
+                form={instagramForm}
+                onChange={(patch) => setInstagramForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => instagramAccount && setDeleteConnector(instagramAccount)}
+                onSave={(event) => void saveInstagramConnector(event)}
+                onTest={() => void testInstagramConnection()}
+              />
+
               <div>
                 <div className="mb-3 flex items-end justify-between gap-3">
                   <div><h3 className="text-sm font-medium text-zinc-200">Connector roadmap</h3><p className="mt-1 text-xs text-zinc-600">Availability is reported by the backend adapter registry.</p></div>
@@ -1900,6 +2077,14 @@ export function GrowthConsole() {
             <Field htmlFor="edit-title" label="Title"><Input id="edit-title" maxLength={160} onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))} required value={editForm.title} /></Field>
             <Field htmlFor="edit-body" label="Post body"><Textarea id="edit-body" maxLength={12000} onChange={(event) => setEditForm((current) => ({ ...current, body: event.target.value }))} required rows={10} value={editForm.body} /></Field>
             <Field htmlFor="edit-tags" label="Hashtags" hint="Separate with spaces or commas"><Input id="edit-tags" onChange={(event) => setEditForm((current) => ({ ...current, hashtags: event.target.value }))} value={editForm.hashtags} /></Field>
+            {editPost?.channel === "instagram" ? (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+                <Field htmlFor="edit-media-url" label="Public image URL" hint="Required for Instagram">
+                  <Input id="edit-media-url" onChange={(event) => setEditForm((current) => ({ ...current, mediaUrl: event.target.value }))} pattern="https://.+" required type="url" value={editForm.mediaUrl} />
+                </Field>
+                <MediaPreview label={`Updated media preview for ${editPost.title}`} url={editForm.mediaUrl} />
+              </div>
+            ) : null}
             <div className="flex gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-200"><AlertTriangle className="mt-0.5 size-4 shrink-0" />Editing invalidates approval. The updated draft returns to Pending.</div>
           </form>
           <DialogFooter className="border-zinc-800 bg-[#090909]">
@@ -1913,7 +2098,7 @@ export function GrowthConsole() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Schedule approved draft</DialogTitle>
-            <DialogDescription>The durable local worker will publish this exact revision to {scheduleTarget?.channel === "blog" ? "WordPress" : "Telegram"}.</DialogDescription>
+            <DialogDescription>The durable local worker will publish this exact revision to {scheduleTarget ? publisherDisplayName(scheduleTarget.channel) : "the selected publisher"}.</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" id="schedule-draft-form" onSubmit={schedulePost}>
             <div className="rounded-md border border-zinc-900 bg-black p-3">
