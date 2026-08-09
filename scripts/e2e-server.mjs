@@ -15,6 +15,7 @@ let stopping = false;
 const mockState = {
   modelRequests: 0,
   generationRequests: 0,
+  imageGenerationRequests: 0,
   wordpressAuthChecks: 0,
   wordpressPublishes: 0,
   metaAuthChecks: 0,
@@ -38,6 +39,7 @@ const mockState = {
   lastLinkedInOrganizationPost: null,
   lastLinkedInOrganizationHeaders: null,
   lastWhatsAppTemplate: null,
+  lastImageGeneration: null,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -135,6 +137,20 @@ const mockServer = createServer(async (request, response) => {
                   : "A concrete checklist gives a small business an immediately useful next step.",
               }),
             },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/images/generations") {
+      mockState.imageGenerationRequests += 1;
+      mockState.lastImageGeneration = await readJson(request);
+      sendJson(response, 200, {
+        data: [
+          {
+            b64_json:
+              "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNkOPGfgYGBiQEMABR/Act0bgo/AAAAAElFTkSuQmCC",
           },
         ],
       });

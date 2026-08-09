@@ -7,14 +7,17 @@ import {
   FileImage,
   HardDrive,
   ImageIcon,
+  KeyRound,
   Loader2,
   Pencil,
+  PlugZap,
   Plus,
   RefreshCw,
   Send,
   ShieldCheck,
   Trash2,
   Upload,
+  WandSparkles,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -35,14 +38,24 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { MediaAsset, MediaLibraryResponse } from "@/lib/app-types";
+import type {
+  ImageProviderKind,
+  MediaAsset,
+  MediaLibraryResponse,
+  ProviderConnectionResult,
+  PublicAppState,
+  PublicImageProviderSettings,
+} from "@/lib/app-types";
 import { requestJson } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type TransformPreset = "square" | "portrait" | "landscape";
 
 type Props = {
+  imageProvider: PublicImageProviderSettings;
+  onStateChange: (state: PublicAppState) => void;
   onUseInDraft: (asset: MediaAsset) => void;
 };
 
@@ -79,7 +92,7 @@ async function uploadAsset(file: File) {
   return { asset: payload.asset, deduplicated: Boolean(payload.deduplicated) };
 }
 
-export function MediaLibrary({ onUseInDraft }: Props) {
+export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [library, setLibrary] = useState<MediaLibraryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +101,21 @@ export function MediaLibrary({ onUseInDraft }: Props) {
   const [editAsset, setEditAsset] = useState<MediaAsset | null>(null);
   const [editForm, setEditForm] = useState({ altText: "", publicSourceUrl: "" });
   const [deleteAsset, setDeleteAsset] = useState<MediaAsset | null>(null);
+  const [imageProviderForm, setImageProviderForm] = useState({
+    kind: imageProvider.kind,
+    baseUrl: imageProvider.baseUrl,
+    model: imageProvider.model,
+    apiKey: "",
+  });
+  const [generateForm, setGenerateForm] = useState({
+    prompt: "",
+    negativePrompt: "",
+    preset: "square" as TransformPreset,
+    quality: "auto" as "low" | "medium" | "high" | "auto",
+    steps: 28,
+    guidanceScale: 7,
+    seed: -1,
+  });
 
   const loadLibrary = useCallback(async () => {
     setLoading(true);
@@ -135,6 +163,62 @@ export function MediaLibrary({ onUseInDraft }: Props) {
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Image upload failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function changeProviderKind(kind: ImageProviderKind) {
+    setImageProviderForm({
+      kind,
+      baseUrl: kind === "automatic1111" ? "http://127.0.0.1:7860" : "https://api.openai.com/v1",
+      model: kind === "automatic1111" ? "" : "gpt-image-2",
+      apiKey: "",
+    });
+  }
+
+  async function saveImageProvider(verify: boolean) {
+    setBusy(verify ? "image-provider-test" : "image-provider-save");
+    try {
+      const response = await requestJson<{ ok: boolean; state: PublicAppState }>(
+        "/api/settings/image-provider",
+        { method: "PUT", body: JSON.stringify(imageProviderForm) },
+      );
+      onStateChange(response.state);
+      if (verify) {
+        const result = await requestJson<ProviderConnectionResult>("/api/image-providers/test", {
+          method: "POST",
+        });
+        toast.success("Image provider connected", { description: result.message });
+      } else {
+        toast.success("Image provider settings saved");
+      }
+      setImageProviderForm((current) => ({ ...current, apiKey: "" }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the image provider.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function generateAsset(event: FormEvent) {
+    event.preventDefault();
+    setBusy("generate-image");
+    try {
+      const response = await requestJson<{
+        ok: boolean;
+        asset: MediaAsset;
+        deduplicated: boolean;
+      }>("/api/media/generate", {
+        method: "POST",
+        body: JSON.stringify(generateForm),
+      });
+      await loadLibrary();
+      toast.success(response.deduplicated ? "Existing generated image reused" : "Image ready for review", {
+        description: "Saved privately. Nothing was posted.",
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image generation failed.");
     } finally {
       setBusy(null);
     }
@@ -213,6 +297,101 @@ export function MediaLibrary({ onUseInDraft }: Props) {
 
   return (
     <div className="space-y-5">
+      <Card className="overflow-hidden border-violet-500/20 bg-[#050505] shadow-[0_0_70px_-36px_rgba(139,92,246,0.55)]">
+        <CardHeader className="border-b border-zinc-900 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_28%)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="grid size-11 place-items-center rounded-lg border border-violet-400/25 bg-violet-500/10 text-violet-200 shadow-[inset_0_0_18px_rgba(139,92,246,0.08)]">
+                <WandSparkles className="size-5" />
+              </div>
+              <div>
+                <CardTitle>AI image studio</CardTitle>
+                <CardDescription>Generate one campaign visual, inspect it locally, then decide where it belongs.</CardDescription>
+              </div>
+            </div>
+            <Badge className={cn(
+              "border-zinc-800 bg-black/70",
+              imageProvider.configured ? "text-emerald-300" : "text-amber-300",
+            )} variant="outline">
+              <span className={cn("mr-1.5 size-1.5 rounded-full", imageProvider.configured ? "bg-emerald-400" : "bg-amber-400")} />
+              {imageProvider.configured ? "Provider saved" : "Setup required"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-6 p-0 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <form className="space-y-4 p-5 sm:p-6" onSubmit={generateAsset}>
+            <div className="space-y-2">
+              <Label htmlFor="image-prompt">Campaign image prompt</Label>
+              <Textarea
+                id="image-prompt"
+                maxLength={4000}
+                onChange={(event) => setGenerateForm((current) => ({ ...current, prompt: event.target.value }))}
+                placeholder="A premium editorial product scene for a local coffee brand, deep charcoal background, warm rim light, no text..."
+                required
+                rows={5}
+                value={generateForm.prompt}
+              />
+              <div className="flex justify-between text-[10px] text-zinc-600"><span>Be specific about subject, setting, lighting, and exclusions.</span><span>{generateForm.prompt.length}/4000</span></div>
+            </div>
+            {imageProvider.kind === "automatic1111" ? (
+              <div className="space-y-2">
+                <Label htmlFor="image-negative-prompt">Negative prompt</Label>
+                <Textarea id="image-negative-prompt" maxLength={2000} onChange={(event) => setGenerateForm((current) => ({ ...current, negativePrompt: event.target.value }))} placeholder="blurry, watermark, distorted text" rows={2} value={generateForm.negativePrompt} />
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="image-preset">Aspect</Label>
+                <Select onValueChange={(value) => setGenerateForm((current) => ({ ...current, preset: value as TransformPreset }))} value={generateForm.preset}>
+                  <SelectTrigger className="w-full bg-black" id="image-preset"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="square">Square 1:1</SelectItem><SelectItem value="portrait">Portrait 4:5</SelectItem><SelectItem value="landscape">Landscape</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {imageProvider.kind === "openai-images" ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="image-quality">Quality</Label>
+                  <Select onValueChange={(value) => setGenerateForm((current) => ({ ...current, quality: value as "low" | "medium" | "high" | "auto" }))} value={generateForm.quality}>
+                    <SelectTrigger className="w-full bg-black" id="image-quality"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="auto">Auto</SelectItem><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2"><Label htmlFor="image-steps">Steps</Label><Input id="image-steps" max={80} min={1} onChange={(event) => setGenerateForm((current) => ({ ...current, steps: Number(event.target.value) }))} type="number" value={generateForm.steps} /></div>
+                  <div className="space-y-2"><Label htmlFor="image-guidance">Guidance</Label><Input id="image-guidance" max={20} min={1} onChange={(event) => setGenerateForm((current) => ({ ...current, guidanceScale: Number(event.target.value) }))} step={0.5} type="number" value={generateForm.guidanceScale} /></div>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-900 pt-4">
+              <p className="max-w-md text-[11px] leading-5 text-zinc-600"><ShieldCheck className="mr-1.5 inline size-3.5 text-emerald-400" />Generated bytes are validated and saved privately. This action never creates or publishes a post.</p>
+              <Button disabled={!imageProvider.configured || !generateForm.prompt.trim() || busy === "generate-image"} size="lg" type="submit">
+                {busy === "generate-image" ? <Loader2 className="animate-spin" /> : <WandSparkles />} Generate image
+              </Button>
+            </div>
+          </form>
+
+          <div className="border-t border-zinc-900 bg-[#030303] p-5 xl:border-t-0 xl:border-l sm:p-6">
+            <div className="mb-4 flex items-center gap-2"><KeyRound className="size-4 text-cyan-300" /><h2 className="text-sm font-semibold text-zinc-200">Image provider</h2></div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="image-provider-kind">Adapter</Label>
+                <Select onValueChange={(value) => changeProviderKind(value as ImageProviderKind)} value={imageProviderForm.kind}>
+                  <SelectTrigger className="w-full bg-black" id="image-provider-kind"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="automatic1111">Automatic1111 / Forge</SelectItem><SelectItem value="openai-images">OpenAI-compatible Images API</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label htmlFor="image-provider-url">Base URL</Label><Input id="image-provider-url" onChange={(event) => setImageProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} required type="url" value={imageProviderForm.baseUrl} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "Start WebUI with --api. Forge uses the same endpoint." : "Use an API root or a URL ending in /v1."}</p></div>
+              <div className="space-y-2"><Label htmlFor="image-provider-model">Model {imageProviderForm.kind === "automatic1111" ? "(optional checkpoint)" : ""}</Label><Input id="image-provider-model" onChange={(event) => setImageProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={imageProviderForm.kind === "automatic1111" ? "Use active checkpoint" : "gpt-image-2"} required={imageProviderForm.kind === "openai-images"} value={imageProviderForm.model} /></div>
+              <div className="space-y-2"><Label htmlFor="image-provider-key">API key</Label><Input autoComplete="off" id="image-provider-key" onChange={(event) => setImageProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={imageProvider.hasApiKey ? "Stored — blank keeps current key" : "Optional for local; required by most hosted APIs"} type="password" value={imageProviderForm.apiKey} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "For WebUI --api-auth, enter username:password." : "Sent only as a bearer header and encrypted at rest."}</p></div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(false)} type="button" variant="outline">{busy === "image-provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
+                <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(true)} type="button">{busy === "image-provider-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="overflow-hidden border-zinc-800 bg-[#060606]">
           <CardHeader className="border-b border-zinc-900 bg-[radial-gradient(circle_at_top_left,rgba(168,85,247,0.12),transparent_38%)]">
@@ -320,6 +499,13 @@ export function MediaLibrary({ onUseInDraft }: Props) {
                   <p className="truncate text-sm font-medium text-zinc-200" title={asset.originalName}>{asset.originalName}</p>
                   <p className="mt-1 font-mono text-[10px] text-zinc-600">{asset.width}×{asset.height} · {formatBytes(asset.byteSize)} · {asset.mimeType.replace("image/", "")}</p>
                 </div>
+                {asset.generationPrompt ? (
+                  <div className="rounded-md border border-violet-500/15 bg-violet-500/[0.04] p-3">
+                    <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-violet-300 uppercase"><WandSparkles className="size-3" /> AI provenance</div>
+                    <p className="line-clamp-3 text-xs leading-5 text-zinc-400" title={asset.generationPrompt}>{asset.generationPrompt}</p>
+                    <p className="mt-2 truncate font-mono text-[10px] text-zinc-600">{asset.generationProvider} · {asset.generationModel}</p>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-3 gap-2">
                   {(Object.keys(transformLabels) as TransformPreset[]).map((preset) => (
                     <Button

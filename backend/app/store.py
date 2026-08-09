@@ -18,13 +18,21 @@ from app.models import (
     AppMetadata,
     AuditEvent,
     IcpProfile,
+    ImageProviderSettings,
     LocalJob,
     Post,
     ProviderSettings,
     TelegramSettings,
     Workspace,
 )
-from app.schemas import EditPostRequest, ProviderUpdate, SchedulePostRequest, TelegramUpdate, WorkspaceUpdate
+from app.schemas import (
+    EditPostRequest,
+    ImageProviderUpdate,
+    ProviderUpdate,
+    SchedulePostRequest,
+    TelegramUpdate,
+    WorkspaceUpdate,
+)
 
 PUBLISHER_NAMES = {
     "telegram": "Telegram",
@@ -79,6 +87,17 @@ def _ensure_singletons(session: Session) -> None:
                 id=1,
                 kind="ollama",
                 base_url="http://127.0.0.1:11434",
+                model="",
+                api_key=None,
+                updated_at=None,
+            )
+        )
+    if session.get(ImageProviderSettings, 1) is None:
+        session.add(
+            ImageProviderSettings(
+                id=1,
+                kind="automatic1111",
+                base_url="http://127.0.0.1:7860",
                 model="",
                 api_key=None,
                 updated_at=None,
@@ -323,8 +342,9 @@ def public_state(
     with read_session() as session:
         workspace = session.get(Workspace, 1)
         provider = session.get(ProviderSettings, 1)
+        image_provider = session.get(ImageProviderSettings, 1)
         telegram = session.get(TelegramSettings, 1)
-        if workspace is None or provider is None or telegram is None:
+        if workspace is None or provider is None or image_provider is None or telegram is None:
             raise RuntimeError("Local storage has not been initialized.")
         posts = list(session.scalars(select(Post).order_by(Post.created_at.desc())).all())
         audit = list(
@@ -353,6 +373,18 @@ def public_state(
                 "hasApiKey": bool(provider.api_key),
                 "configured": bool(provider.base_url and provider.model),
                 "updatedAt": provider.updated_at,
+            },
+            "imageProvider": {
+                "kind": image_provider.kind,
+                "baseUrl": image_provider.base_url,
+                "model": image_provider.model,
+                "hasApiKey": bool(image_provider.api_key),
+                "configured": bool(
+                    image_provider.updated_at
+                    and image_provider.base_url
+                    and (image_provider.kind == "automatic1111" or image_provider.model)
+                ),
+                "updatedAt": image_provider.updated_at,
             },
             "telegram": {
                 "chatId": telegram.chat_id,
@@ -437,6 +469,33 @@ def update_provider(payload: ProviderUpdate) -> None:
         )
 
 
+def update_image_provider(payload: ImageProviderUpdate) -> None:
+    with write_session() as session:
+        provider = session.get(ImageProviderSettings, 1)
+        if provider is None:
+            raise RuntimeError("Image provider settings are missing.")
+        normalized_url = payload.base_url.rstrip("/")
+        same_endpoint = provider.kind == payload.kind and provider.base_url == normalized_url
+        provider.kind = payload.kind
+        provider.base_url = normalized_url
+        provider.model = payload.model
+        provider.api_key = (
+            encrypt_secret(payload.api_key)
+            if payload.api_key
+            else provider.api_key
+            if same_endpoint
+            else None
+        )
+        provider.updated_at = utc_now()
+        _append_audit(
+            session,
+            action="image_provider.updated",
+            entity_type="provider",
+            entity_id=provider.kind,
+            summary=f"{provider.kind} image provider settings saved.",
+        )
+
+
 def update_telegram(payload: TelegramUpdate) -> None:
     with write_session() as session:
         telegram = session.get(TelegramSettings, 1)
@@ -480,6 +539,19 @@ def provider_runtime() -> dict[str, str]:
         provider = session.get(ProviderSettings, 1)
         if provider is None:
             raise RuntimeError("Provider settings are missing.")
+        return {
+            "kind": provider.kind,
+            "base_url": provider.base_url,
+            "model": provider.model,
+            "api_key": decrypt_secret(provider.api_key),
+        }
+
+
+def image_provider_runtime() -> dict[str, str]:
+    with read_session() as session:
+        provider = session.get(ImageProviderSettings, 1)
+        if provider is None:
+            raise RuntimeError("Image provider settings are missing.")
         return {
             "kind": provider.kind,
             "base_url": provider.base_url,

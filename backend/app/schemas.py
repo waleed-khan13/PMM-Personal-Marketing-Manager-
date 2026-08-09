@@ -37,6 +37,29 @@ class ProviderUpdate(ApiModel):
     api_key: str = Field(default="", max_length=2_000)
 
 
+class ImageProviderUpdate(ApiModel):
+    kind: Literal["openai-images", "automatic1111"]
+    base_url: str = Field(min_length=1, max_length=2_048)
+    model: str = Field(default="", max_length=180)
+    api_key: str = Field(default="", max_length=2_000)
+
+    @model_validator(mode="after")
+    def require_hosted_model(self) -> Self:
+        if self.kind == "openai-images" and not self.model:
+            raise ValueError("Choose an image model for an OpenAI-compatible provider.")
+        return self
+
+
+class ImageGenerateRequest(ApiModel):
+    prompt: str = Field(min_length=3, max_length=4_000)
+    negative_prompt: str = Field(default="", max_length=2_000)
+    preset: Literal["square", "portrait", "landscape"] = "square"
+    quality: Literal["low", "medium", "high", "auto"] = "auto"
+    steps: int = Field(default=28, ge=1, le=80)
+    guidance_scale: float = Field(default=7, ge=1, le=20)
+    seed: int = Field(default=-1, ge=-1, le=2_147_483_647)
+
+
 class TelegramUpdate(ApiModel):
     chat_id: str = Field(min_length=1, max_length=160)
     bot_token: str = Field(default="", max_length=2_000)

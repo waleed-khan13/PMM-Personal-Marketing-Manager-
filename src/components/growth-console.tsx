@@ -2079,6 +2079,8 @@ export function GrowthConsole() {
 
           {!loading && appState && activeView === "media" ? (
             <MediaLibrary
+              imageProvider={appState.imageProvider}
+              onStateChange={setAppState}
               onUseInDraft={(asset) => {
                 if (!asset.publicSourceUrl) return;
                 setGenerateForm((current) => ({

@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.database import read_session, write_session
 from app.errors import AppError
-from app.models import MediaAsset
+from app.models import MediaAsset, MediaGeneration
 from app.schemas import MediaAssetUpdate
 from app.store import append_audit, utc_now
 
@@ -79,8 +79,8 @@ def _inspect_image(data: bytes) -> tuple[Image.Image, str, str]:
         raise
     except (Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
         raise AppError("Image dimensions are too large.", 413) from error
-    except (UnidentifiedImageError, OSError, ValueError) as error:
-        raise AppError("The uploaded file is not a valid JPEG, PNG, or WebP image.") from error
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as error:
+        raise AppError("The image data is not a valid JPEG, PNG, or WebP image.") from error
 
     width, height = image.size
     if width < 1 or height < 1 or width > MAX_MEDIA_DIMENSION or height > MAX_MEDIA_DIMENSION:
@@ -121,6 +121,11 @@ def _asset_dict(asset: MediaAsset) -> dict[str, Any]:
         "sourceAssetId": asset.source_asset_id,
         "publicSourceUrl": asset.public_source_url,
         "altText": asset.alt_text,
+        "generationPrompt": asset.generation_prompt,
+        "generationNegativePrompt": asset.generation_negative_prompt,
+        "generationProvider": asset.generation_provider,
+        "generationModel": asset.generation_model,
+        "generationParameters": dict(asset.generation_parameters or {}),
         "contentUrl": f"/api/media/{asset.id}/content",
         "previewUrl": f"/api/media/{asset.id}/preview",
         "instagramReady": bool(asset.public_source_url),
@@ -168,6 +173,11 @@ def _save_asset(
     original_name: str,
     source: str,
     source_asset_id: str | None = None,
+    generation_prompt: str | None = None,
+    generation_negative_prompt: str | None = None,
+    generation_provider: str | None = None,
+    generation_model: str | None = None,
+    generation_parameters: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     digest = hashlib.sha256(data).hexdigest()
     with read_session() as session:
@@ -199,18 +209,31 @@ def _save_asset(
                 source_asset_id=source_asset_id,
                 public_source_url=None,
                 alt_text="",
+                generation_prompt=generation_prompt,
+                generation_negative_prompt=generation_negative_prompt,
+                generation_provider=generation_provider,
+                generation_model=generation_model,
+                generation_parameters=generation_parameters,
                 created_at=now,
                 updated_at=now,
             )
             session.add(asset)
             append_audit(
                 session,
-                action="media.created" if source == "upload" else "media.transformed",
+                action=(
+                    "media.created"
+                    if source == "upload"
+                    else "media.generated"
+                    if source == "ai-generated"
+                    else "media.transformed"
+                ),
                 entity_type="media",
                 entity_id=asset_id,
                 summary=(
                     f"Stored local media asset {original_name}."
                     if source == "upload"
+                    else f"Generated local media with {generation_provider}."
+                    if source == "ai-generated"
                     else f"Created {source} transform from media asset {source_asset_id}."
                 ),
             )
@@ -233,6 +256,53 @@ def create_media_asset(data: bytes, filename: str | None) -> dict[str, Any]:
         original_name=_clean_original_name(filename),
         source="upload",
     )
+    return {"asset": asset, "deduplicated": deduplicated}
+
+
+def create_generated_media_asset(
+    data: bytes,
+    *,
+    prompt: str,
+    negative_prompt: str,
+    provider_kind: str,
+    model: str,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    image, mime_type, suffix = _inspect_image(data)
+    asset, deduplicated = _save_asset(
+        data=data,
+        image=image,
+        mime_type=mime_type,
+        suffix=suffix,
+        original_name=f"ai-image-{utc_now().replace(':', '-').replace('Z', '')}{suffix}",
+        source="ai-generated",
+        generation_prompt=prompt,
+        generation_negative_prompt=negative_prompt or None,
+        generation_provider=provider_kind,
+        generation_model=model,
+        generation_parameters=parameters,
+    )
+    with write_session() as session:
+        session.add(
+            MediaGeneration(
+                id=str(uuid4()),
+                asset_id=str(asset["id"]),
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                provider_kind=provider_kind,
+                model=model,
+                parameters=parameters,
+                created_at=utc_now(),
+            )
+        )
+        if deduplicated:
+            append_audit(
+                session,
+                action="media.generation_reused",
+                entity_type="media",
+                entity_id=str(asset["id"]),
+                summary="A generated image matched an existing local asset and was reused.",
+            )
     return {"asset": asset, "deduplicated": deduplicated}
 
 
@@ -274,7 +344,7 @@ def transform_media_asset(asset_id: str, preset: str) -> dict[str, Any]:
             output = BytesIO()
             transformed.save(output, format="WEBP", quality=88, method=4)
             data = output.getvalue()
-    except (UnidentifiedImageError, OSError, ValueError) as error:
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as error:
         raise AppError("The source media file could not be transformed.") from error
 
     stem = Path(source_asset.original_name).stem[:180] or "asset"

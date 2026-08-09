@@ -6,6 +6,7 @@ import type { PublicAppState } from "../src/lib/app-types";
 const mockBaseUrl = `http://127.0.0.1:${process.env.LOCALGROWTH_E2E_MOCK_PORT ?? "4100"}`;
 
 async function navigate(page: Page, label: string, heading: string) {
+  await expect(page.getByText(/LOCAL.*v\d+\.\d+\.\d+/)).toBeVisible({ timeout: 60_000 });
   await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: label }).click();
   await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
 }
@@ -563,6 +564,41 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
   await navigate(page, "Media library", "Media library");
   await expect(page.getByText("No media stored yet")).toBeVisible();
 
+  await page.getByLabel("Adapter").click();
+  await page.getByRole("option", { name: "OpenAI-compatible Images API" }).click();
+  await page.getByLabel("Base URL").fill(`${mockBaseUrl}/v1`);
+  await page.getByLabel("Model").fill("e2e-image-model");
+  await page.getByLabel("API key").fill("e2e-image-key");
+  await page.getByRole("button", { name: "Save & test" }).click();
+  await expect(page.getByText("Image provider connected")).toBeVisible();
+
+  const imagePrompt = "A cyan product launch scene on a deep black background with editorial lighting";
+  await page.getByLabel("Campaign image prompt").fill(imagePrompt);
+  await page.getByLabel("Aspect").click();
+  await page.getByRole("option", { name: "Landscape" }).click();
+  await page.getByLabel("Quality").click();
+  await page.getByRole("option", { name: "Medium" }).click();
+  const imageGenerationResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/media/generate") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Generate image" }).click();
+  expect((await imageGenerationResponse).status()).toBe(200);
+  await expect(page.getByText("Image ready for review")).toBeVisible();
+  await expect(page.getByText("AI provenance")).toBeVisible();
+  await expect(page.getByTitle(imagePrompt)).toBeVisible();
+
+  const imageMockResponse = await page.request.get(`${mockBaseUrl}/__e2e/state`);
+  const imageMockState = await imageMockResponse.json();
+  expect(imageMockState.imageGenerationRequests).toBe(1);
+  expect(imageMockState.lastImageGeneration).toEqual({
+    model: "e2e-image-model",
+    prompt: imagePrompt,
+    n: 1,
+    size: "1536x1024",
+    quality: "medium",
+    output_format: "png",
+  });
+
   const png = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
     "base64",
@@ -610,7 +646,7 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
   await assetCard.getByRole("button", { name: "Create Portrait 4:5 transform of e2e-campaign.png" }).click();
   expect((await transformResponse).status()).toBe(200);
   await expect(page.getByText("Portrait 4:5 created")).toBeVisible();
-  await expect(page.getByText("2 stored images")).toBeVisible();
+  await expect(page.getByText("3 stored images")).toBeVisible();
 
   const transformedCard = page
     .getByText("e2e-campaign-portrait.webp", { exact: true })
@@ -621,7 +657,7 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
   await expect(deleteDialog.getByText("This deletion cannot be undone.", { exact: false })).toBeVisible();
   await deleteDialog.getByRole("button", { name: "Delete local files" }).click();
   await expect(page.getByText("Media asset deleted from this computer")).toBeVisible();
-  await expect(page.getByText("1 stored image")).toBeVisible();
+  await expect(page.getByText("2 stored images")).toBeVisible();
 });
 
 test("passes automated accessibility checks in core workflow views", async ({ page }, testInfo) => {

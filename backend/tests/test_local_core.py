@@ -2729,3 +2729,200 @@ def test_local_media_library_uploads_deduplicates_transforms_and_deletes(client)
         for item in audit
     )
     assert any(item["action"] == "media.deleted" and item["entityId"] == asset["id"] for item in audit)
+
+
+def test_image_provider_settings_are_separate_and_encrypted(client) -> None:
+    saved = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "openai-images",
+            "baseUrl": "https://images.example/v1",
+            "model": "image-model",
+            "apiKey": "image-key-must-stay-encrypted",
+        },
+    )
+    assert saved.status_code == 200
+    public = saved.json()["state"]["imageProvider"]
+    assert public == {
+        "kind": "openai-images",
+        "baseUrl": "https://images.example/v1",
+        "model": "image-model",
+        "hasApiKey": True,
+        "configured": True,
+        "updatedAt": public["updatedAt"],
+    }
+
+    from app.config import get_settings
+
+    with sqlite3.connect(Path(get_settings().database_path)) as connection:
+        encrypted = connection.execute(
+            "SELECT api_key FROM image_provider_settings WHERE id = 1"
+        ).fetchone()[0]
+    assert "image-key-must-stay-encrypted" not in encrypted
+    assert "image-key-must-stay-encrypted" not in json.dumps(saved.json())
+
+
+def test_image_generation_adapters_send_exact_provider_contracts(monkeypatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.schemas import ImageGenerateRequest
+    from app.services import image_generation
+
+    output = BytesIO()
+    Image.new("RGB", (2, 2), color=(92, 56, 210)).save(output, format="PNG")
+    encoded = __import__("base64").b64encode(output.getvalue()).decode("ascii")
+    calls: list[dict[str, object]] = []
+
+    async def fake_request(url: str, **kwargs):
+        calls.append({"url": url, **kwargs})
+        if url.endswith("/images/generations"):
+            return {"data": [{"b64_json": encoded}]}
+        return {"images": [encoded], "parameters": {}, "info": "{}"}
+
+    monkeypatch.setattr(image_generation, "_request_json", fake_request)
+    openai_result = asyncio.run(
+        image_generation.generate_image(
+            {
+                "kind": "openai-images",
+                "base_url": "https://images.example/v1",
+                "model": "gpt-image-2",
+                "api_key": "hosted-secret",
+            },
+            ImageGenerateRequest(
+                prompt="A precise editorial campaign image",
+                preset="portrait",
+                quality="high",
+            ),
+        )
+    )
+    assert openai_result.data == output.getvalue()
+    assert calls[0]["url"] == "https://images.example/v1/images/generations"
+    assert calls[0]["headers"] == {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer hosted-secret",
+    }
+    assert calls[0]["json_body"] == {
+        "model": "gpt-image-2",
+        "prompt": "A precise editorial campaign image",
+        "n": 1,
+        "size": "1024x1536",
+        "quality": "high",
+        "output_format": "png",
+    }
+
+    calls.clear()
+    local_result = asyncio.run(
+        image_generation.generate_image(
+            {
+                "kind": "automatic1111",
+                "base_url": "http://127.0.0.1:7860",
+                "model": "campaign-checkpoint.safetensors",
+                "api_key": "operator:secret",
+            },
+            ImageGenerateRequest(
+                prompt="A local campaign visual",
+                negativePrompt="watermark",
+                preset="landscape",
+                steps=32,
+                guidanceScale=6.5,
+                seed=42,
+            ),
+        )
+    )
+    assert local_result.data == output.getvalue()
+    assert calls[0]["url"] == "http://127.0.0.1:7860/sdapi/v1/txt2img"
+    assert calls[0]["headers"] == {
+        "Content-Type": "application/json",
+        "Authorization": "Basic b3BlcmF0b3I6c2VjcmV0",
+    }
+    assert calls[0]["json_body"] == {
+        "prompt": "A local campaign visual",
+        "negative_prompt": "watermark",
+        "width": 1152,
+        "height": 896,
+        "steps": 32,
+        "cfg_scale": 6.5,
+        "seed": 42,
+        "batch_size": 1,
+        "n_iter": 1,
+        "override_settings": {"sd_model_checkpoint": "campaign-checkpoint.safetensors"},
+        "override_settings_restore_afterwards": True,
+    }
+
+
+def test_generated_image_is_validated_stored_and_audited(client, monkeypatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.services.image_generation import GeneratedImage
+
+    output = BytesIO()
+    Image.new("RGB", (64, 48), color=(34, 211, 238)).save(output, format="PNG")
+
+    async def fake_generate(_settings, request):
+        return GeneratedImage(
+            data=output.getvalue(),
+            provider_kind="openai-images",
+            model="image-model",
+            parameters={"preset": request.preset, "size": "1536x1024", "quality": request.quality},
+        )
+
+    monkeypatch.setattr("app.main.generate_image", fake_generate)
+    created = client.post(
+        "/api/media/generate",
+        json={
+            "prompt": "A cyan product launch scene on a black background",
+            "preset": "landscape",
+            "quality": "medium",
+        },
+    )
+    assert created.status_code == 200
+    asset = created.json()["asset"]
+    assert asset["source"] == "ai-generated"
+    assert asset["generationPrompt"] == "A cyan product launch scene on a black background"
+    assert asset["generationProvider"] == "openai-images"
+    assert asset["generationModel"] == "image-model"
+    assert asset["generationParameters"]["size"] == "1536x1024"
+    assert client.get(asset["contentUrl"]).content == output.getvalue()
+
+    from app.config import get_settings
+
+    with sqlite3.connect(Path(get_settings().database_path)) as connection:
+        history = connection.execute(
+            "SELECT prompt, provider_kind, model FROM media_generations WHERE asset_id = ?",
+            (asset["id"],),
+        ).fetchone()
+    assert history == (
+        "A cyan product launch scene on a black background",
+        "openai-images",
+        "image-model",
+    )
+    audit = client.get("/api/state").json()["audit"]
+    assert any(item["action"] == "media.generated" and item["entityId"] == asset["id"] for item in audit)
+
+
+def test_malformed_generated_image_returns_a_validation_error(client, monkeypatch) -> None:
+    from app.services.image_generation import GeneratedImage
+
+    malformed_png = __import__("base64").b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8DAwMDAxMDAwMDAAAAJBQEDAAbzXQAAAABJRU5ErkJggg=="
+    )
+
+    async def fake_generate(_settings, _request):
+        return GeneratedImage(
+            data=malformed_png,
+            provider_kind="openai-images",
+            model="image-model",
+            parameters={},
+        )
+
+    monkeypatch.setattr("app.main.generate_image", fake_generate)
+    rejected = client.post(
+        "/api/media/generate",
+        json={"prompt": "A malformed provider response for validation"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["error"] == "The image data is not a valid JPEG, PNG, or WebP image."

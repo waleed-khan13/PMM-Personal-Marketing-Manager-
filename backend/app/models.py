@@ -38,6 +38,17 @@ class ProviderSettings(Base):
     updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
+class ImageProviderSettings(Base):
+    __tablename__ = "image_provider_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, default="automatic1111")
+    base_url: Mapped[str] = mapped_column(String(2048), nullable=False, default="http://127.0.0.1:7860")
+    model: Mapped[str] = mapped_column(String(180), nullable=False, default="")
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
 class TelegramSettings(Base):
     __tablename__ = "telegram_settings"
 
@@ -110,8 +121,28 @@ class MediaAsset(Base):
     source_asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     public_source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     alt_text: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    generation_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generation_negative_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    generation_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    generation_model: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    generation_parameters: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class MediaGeneration(Base):
+    __tablename__ = "media_generations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("media_assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    negative_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    provider_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(180), nullable=False)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
 
 
 class AuditEvent(Base):

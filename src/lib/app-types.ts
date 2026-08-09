@@ -1,4 +1,5 @@
 export type ProviderKind = "ollama" | "openai-compatible";
+export type ImageProviderKind = "openai-images" | "automatic1111";
 export type ContentChannel = "linkedin" | "linkedin-company" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
@@ -21,6 +22,15 @@ export interface WorkspaceSettings {
 
 export interface PublicProviderSettings {
   kind: ProviderKind;
+  baseUrl: string;
+  model: string;
+  hasApiKey: boolean;
+  configured: boolean;
+  updatedAt: string | null;
+}
+
+export interface PublicImageProviderSettings {
+  kind: ImageProviderKind;
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
@@ -84,6 +94,11 @@ export interface MediaAsset {
   sourceAssetId: string | null;
   publicSourceUrl: string | null;
   altText: string;
+  generationPrompt: string | null;
+  generationNegativePrompt: string | null;
+  generationProvider: ImageProviderKind | null;
+  generationModel: string | null;
+  generationParameters: Record<string, string | number | boolean>;
   contentUrl: string;
   previewUrl: string;
   instagramReady: boolean;
@@ -415,6 +430,7 @@ export interface WebsiteCrawlResult extends LeadImportRow {
 export interface PublicAppState {
   workspace: WorkspaceSettings;
   provider: PublicProviderSettings;
+  imageProvider: PublicImageProviderSettings;
   telegram: PublicTelegramSettings;
   posts: GeneratedPost[];
   jobs: LocalJob[];

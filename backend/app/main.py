@@ -38,6 +38,7 @@ from app.lead_store import (
 )
 from app.media_store import (
     MAX_MEDIA_BYTES,
+    create_generated_media_asset,
     create_media_asset,
     delete_media_asset,
     list_media_assets,
@@ -65,6 +66,8 @@ from app.schemas import (
     GeneratePostRequest,
     GooglePlacesSearchRequest,
     IcpProfileUpdate,
+    ImageGenerateRequest,
+    ImageProviderUpdate,
     LeadComplianceUpdate,
     LeadDeleteRequest,
     LeadImportRequest,
@@ -101,6 +104,11 @@ from app.seo_store import (
 )
 from app.services.crawler import crawl_website
 from app.services.google_places import search_google_places
+from app.services.image_generation import (
+    generate_image,
+    test_image_provider,
+    validate_image_base_url,
+)
 from app.services.provider import generate_content, generate_outreach, test_provider, validate_base_url
 from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.seo_audit import audit_website
@@ -118,6 +126,7 @@ from app.store import (
     fail_publish,
     fail_publish_uncertain,
     finish_publish,
+    image_provider_runtime,
     initialize_storage,
     post_for_approval,
     provider_runtime,
@@ -129,6 +138,7 @@ from app.store import (
     set_scheduler_paused,
     set_telegram_polling,
     telegram_runtime,
+    update_image_provider,
     update_provider,
     update_telegram,
     update_workspace,
@@ -218,6 +228,20 @@ async def upload_media_asset(file: Annotated[UploadFile, File()]) -> dict[str, A
     if len(data) > MAX_MEDIA_BYTES:
         raise AppError("Images must be 10 MB or smaller.", 413)
     result = create_media_asset(data, file.filename)
+    return {"ok": True, **result}
+
+
+@app.post("/api/media/generate")
+async def generate_media_asset(payload: ImageGenerateRequest) -> dict[str, Any]:
+    generated = await generate_image(image_provider_runtime(), payload)
+    result = create_generated_media_asset(
+        generated.data,
+        prompt=payload.prompt,
+        negative_prompt=payload.negative_prompt,
+        provider_kind=generated.provider_kind,
+        model=generated.model,
+        parameters=generated.parameters,
+    )
     return {"ok": True, **result}
 
 
@@ -467,6 +491,25 @@ def save_provider(payload: ProviderUpdate) -> dict[str, Any]:
 @app.post("/api/providers/test")
 async def provider_health() -> JSONResponse:
     result = await test_provider(provider_runtime())
+    return JSONResponse(
+        result.model_dump(by_alias=True, exclude_none=True),
+        status_code=200 if result.ok else 502,
+    )
+
+
+@app.put("/api/settings/image-provider")
+def save_image_provider(payload: ImageProviderUpdate) -> dict[str, Any]:
+    try:
+        normalized_url = validate_image_base_url(payload.base_url)
+    except ExternalServiceError as error:
+        raise AppError(error.message) from error
+    update_image_provider(payload.model_copy(update={"base_url": normalized_url}))
+    return {"ok": True, "state": state_response()}
+
+
+@app.post("/api/image-providers/test")
+async def image_provider_health() -> JSONResponse:
+    result = await test_image_provider(image_provider_runtime())
     return JSONResponse(
         result.model_dump(by_alias=True, exclude_none=True),
         status_code=200 if result.ok else 502,
