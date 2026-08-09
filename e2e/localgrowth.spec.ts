@@ -557,6 +557,73 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   });
 });
 
+test("manages a real local media asset and hands its HTTPS source to a draft", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
+  await navigate(page, "Media library", "Media library");
+  await expect(page.getByText("No media stored yet")).toBeVisible();
+
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  await page.locator("#media-upload").setInputFiles({
+    name: "e2e-campaign.png",
+    mimeType: "image/png",
+    buffer: png,
+  });
+  const uploadResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/media") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Store locally" }).click();
+  expect((await uploadResponse).status()).toBe(200);
+  await expect(page.getByText("Image stored locally")).toBeVisible();
+
+  let assetCard = page
+    .getByText("e2e-campaign.png", { exact: true })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(assetCard.getByRole("img", { name: "Preview of e2e-campaign.png" })).toBeVisible();
+  await expect(assetCard.getByRole("button", { name: "Use in draft" })).toBeDisabled();
+  await assetCard.getByRole("button", { name: "Edit e2e-campaign.png" }).click();
+
+  const metadataDialog = page.getByRole("dialog", { name: "Edit media metadata" });
+  await metadataDialog.getByLabel("Alt text").fill("A green E2E campaign image");
+  await metadataDialog.getByLabel("Public HTTPS source").fill("https://cdn.example.test/e2e-campaign.png");
+  await metadataDialog.getByRole("button", { name: "Save metadata" }).click();
+  await expect(page.getByText("Media metadata saved")).toBeVisible();
+
+  assetCard = page
+    .getByText("e2e-campaign.png", { exact: true })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(assetCard.getByText("HTTPS ready")).toBeVisible();
+  await assetCard.getByRole("button", { name: "Use in draft" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Create a draft" })).toBeVisible();
+  await expect(page.getByLabel("Public image URL")).toHaveValue("https://cdn.example.test/e2e-campaign.png");
+
+  await navigate(page, "Media library", "Media library");
+  assetCard = page
+    .getByText("e2e-campaign.png", { exact: true })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  const transformResponse = page.waitForResponse(
+    (response) => /\/api\/media\/[^/]+\/transform$/.test(response.url()),
+  );
+  await assetCard.getByRole("button", { name: "Create Portrait 4:5 transform of e2e-campaign.png" }).click();
+  expect((await transformResponse).status()).toBe(200);
+  await expect(page.getByText("Portrait 4:5 created")).toBeVisible();
+  await expect(page.getByText("2 stored images")).toBeVisible();
+
+  const transformedCard = page
+    .getByText("e2e-campaign-portrait.webp", { exact: true })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(transformedCard.getByText("1080×1350", { exact: false })).toBeVisible();
+  await transformedCard.getByRole("button", { name: "Delete e2e-campaign-portrait.webp" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete e2e-campaign-portrait.webp?" });
+  await expect(deleteDialog.getByText("This deletion cannot be undone.", { exact: false })).toBeVisible();
+  await deleteDialog.getByRole("button", { name: "Delete local files" }).click();
+  await expect(page.getByText("Media asset deleted from this computer")).toBeVisible();
+  await expect(page.getByText("1 stored image")).toBeVisible();
+});
+
 test("passes automated accessibility checks in core workflow views", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
@@ -564,6 +631,9 @@ test("passes automated accessibility checks in core workflow views", async ({ pa
 
   await navigate(page, "Integrations", "Connections");
   await expectNoAccessibilityViolations(page, testInfo, "connections");
+
+  await navigate(page, "Media library", "Media library");
+  await expectNoAccessibilityViolations(page, testInfo, "media-library");
 
   await navigate(page, "Approval queue", "Approval queue");
   await expectNoAccessibilityViolations(page, testInfo, "approval-queue");

@@ -117,6 +117,17 @@ class SchedulerUpdate(ApiModel):
     paused: bool
 
 
+class MediaAssetUpdate(ApiModel):
+    alt_text: str = Field(default="", max_length=500)
+    public_source_url: str | None = Field(default=None, max_length=2_048)
+
+    _validate_public_source_url = field_validator("public_source_url")(_validate_post_media_url)
+
+
+class MediaTransformRequest(ApiModel):
+    preset: Literal["square", "portrait", "landscape"]
+
+
 class LeadImportRow(ApiModel):
     business_name: str = Field(default="", max_length=200)
     website: str = Field(default="", max_length=2_048)

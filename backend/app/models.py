@@ -94,6 +94,26 @@ class Post(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    storage_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    preview_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="upload", index=True)
+    source_asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    public_source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    alt_text: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

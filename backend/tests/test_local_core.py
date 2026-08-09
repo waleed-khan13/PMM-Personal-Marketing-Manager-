@@ -2623,3 +2623,109 @@ def test_whatsapp_template_payload_and_security_validation(monkeypatch) -> None:
             ],
         },
     }
+
+
+def test_local_media_library_uploads_deduplicates_transforms_and_deletes(client) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    source = BytesIO()
+    Image.new("RGB", (120, 80), color=(18, 130, 82)).save(source, format="PNG")
+    source_bytes = source.getvalue()
+
+    uploaded = client.post(
+        "/api/media",
+        files={"file": ("../campaign.png", source_bytes, "application/octet-stream")},
+    )
+    assert uploaded.status_code == 200
+    uploaded_payload = uploaded.json()
+    assert uploaded_payload["deduplicated"] is False
+    asset = uploaded_payload["asset"]
+    assert asset["originalName"] == "campaign.png"
+    assert asset["mimeType"] == "image/png"
+    assert asset["width"] == 120
+    assert asset["height"] == 80
+    assert asset["instagramReady"] is False
+    assert len(asset["sha256"]) == 64
+
+    content = client.get(asset["contentUrl"])
+    assert content.status_code == 200
+    assert content.content == source_bytes
+    assert content.headers["content-type"] == "image/png"
+    assert content.headers["x-content-type-options"] == "nosniff"
+
+    preview = client.get(asset["previewUrl"])
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/webp"
+    with Image.open(BytesIO(preview.content)) as preview_image:
+        assert preview_image.size == (120, 80)
+
+    duplicate = client.post(
+        "/api/media",
+        files={"file": ("renamed.png", source_bytes, "image/png")},
+    )
+    assert duplicate.status_code == 200
+    assert duplicate.json()["deduplicated"] is True
+    assert duplicate.json()["asset"]["id"] == asset["id"]
+
+    invalid = client.post(
+        "/api/media",
+        files={"file": ("fake.png", b"not-an-image", "image/png")},
+    )
+    assert invalid.status_code == 400
+    assert "valid JPEG, PNG, or WebP" in invalid.json()["error"]
+
+    oversized = client.post(
+        "/api/media",
+        files={"file": ("oversized.png", b"x" * (10 * 1024 * 1024 + 1), "image/png")},
+    )
+    assert oversized.status_code == 413
+    assert oversized.json()["error"] == "Images must be 10 MB or smaller."
+
+    metadata = client.patch(
+        f"/api/media/{asset['id']}",
+        json={
+            "altText": "A green campaign card for Northstar Studio",
+            "publicSourceUrl": "https://cdn.example.test/campaign.png",
+        },
+    )
+    assert metadata.status_code == 200
+    assert metadata.json()["asset"]["instagramReady"] is True
+    assert metadata.json()["asset"]["altText"] == "A green campaign card for Northstar Studio"
+
+    transformed = client.post(
+        f"/api/media/{asset['id']}/transform",
+        json={"preset": "portrait"},
+    )
+    assert transformed.status_code == 200
+    transformed_asset = transformed.json()["asset"]
+    assert transformed_asset["source"] == "transform:portrait"
+    assert transformed_asset["sourceAssetId"] == asset["id"]
+    assert transformed_asset["width"] == 1080
+    assert transformed_asset["height"] == 1350
+    transformed_content = client.get(transformed_asset["contentUrl"])
+    with Image.open(BytesIO(transformed_content.content)) as transformed_image:
+        assert transformed_image.size == (1080, 1350)
+        assert transformed_image.format == "WEBP"
+
+    library = client.get("/api/media")
+    assert library.status_code == 200
+    assert library.headers["cache-control"] == "no-store"
+    assert library.json()["storagePolicy"] == "local-only"
+    assert library.json()["total"] == 2
+
+    removed_transform = client.delete(f"/api/media/{transformed_asset['id']}")
+    assert removed_transform.status_code == 200
+    assert client.get(transformed_asset["contentUrl"]).status_code == 404
+    removed_source = client.delete(f"/api/media/{asset['id']}")
+    assert removed_source.status_code == 200
+    assert client.get(asset["previewUrl"]).status_code == 404
+
+    audit = client.get("/api/state").json()["audit"]
+    assert any(item["action"] == "media.created" and item["entityId"] == asset["id"] for item in audit)
+    assert any(
+        item["action"] == "media.transformed" and item["entityId"] == transformed_asset["id"]
+        for item in audit
+    )
+    assert any(item["action"] == "media.deleted" and item["entityId"] == asset["id"] for item in audit)

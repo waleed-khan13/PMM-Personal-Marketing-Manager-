@@ -67,6 +67,8 @@ The connector action never consumes free-form model output directly. Every paylo
 
 The local scheduler claims one due SQLite job at a time, recovers stale locks on restart, and applies a bounded catch-up window. Preflight failures can retry with backoff. Once a Telegram, WordPress, Facebook Page, Instagram, LinkedIn Member, or LinkedIn Company Page delivery has been reserved and attempted, an uncertain response becomes a failed review item instead of an automatic retry; the operator must explicitly review it before another attempt.
 
+The media library stores metadata in `media_assets` and bytes under the configurable data directory's `media/` folder. Uploads are bounded before decoding, verified from content rather than browser MIME claims, restricted to JPEG/PNG/WebP, protected by pixel and dimension limits, named with generated UUIDs, and deduplicated by SHA-256. Previews and preset transforms are newly encoded WebP files. Content endpoints resolve only database-owned storage names inside the media directory and send `nosniff`; the list API never exposes filesystem paths. Metadata may contain an operator-supplied public HTTPS source, but LocalGrowth never treats a loopback content URL as remotely publishable.
+
 ## Local lead vault
 
 Lead imports enter FastAPI as validated structured rows after the browser parses an operator-selected CSV locally. The SQLite `leads` table stores the current business/contact record, pipeline state, source evidence, and suppression state. A separate `lead_identities` table holds unique normalized email, domain, phone, and business-plus-location keys so duplicates can merge without replacing existing values.

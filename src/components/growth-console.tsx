@@ -12,6 +12,7 @@ import {
   Database,
   FilePenLine,
   Inbox,
+  Images,
   LayoutDashboard,
   Loader2,
   LockKeyhole,
@@ -40,6 +41,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { LeadsWorkspace } from "@/components/leads-workspace";
+import { MediaLibrary } from "@/components/media-library";
 import {
   InstagramConnectorCard,
   type InstagramConnectorForm,
@@ -124,7 +126,7 @@ import {
   type WordPressConnectorForm,
 } from "@/components/wordpress-connector-card";
 
-type ViewId = "command" | "create" | "queue" | "leads" | "seo" | "scheduler" | "integrations" | "activity";
+type ViewId = "command" | "create" | "queue" | "media" | "leads" | "seo" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
 
 type StateResponse = {
@@ -142,6 +144,7 @@ const navigation: NavItem[] = [
   { id: "command", label: "Command", icon: LayoutDashboard },
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
+  { id: "media", label: "Media library", icon: Images },
   { id: "leads", label: "Lead intelligence", icon: UsersRound },
   { id: "seo", label: "Local SEO lab", icon: SearchCheck },
   { id: "scheduler", label: "Scheduler", icon: Clock3 },
@@ -164,6 +167,11 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
     eyebrow: "Human in the loop",
     title: "Approval queue",
     description: "Review the exact content version before it can leave this machine.",
+  },
+  media: {
+    eyebrow: "Local creative vault",
+    title: "Media library",
+    description: "Verify, store, transform, and reuse campaign images without uploading them to LocalGrowth cloud.",
   },
   leads: {
     eyebrow: "Permission-aware intelligence",
@@ -2067,6 +2075,23 @@ export function GrowthConsole() {
 
           {!loading && appState && activeView === "leads" ? (
             <LeadsWorkspace onStateChange={setAppState} state={appState} />
+          ) : null}
+
+          {!loading && appState && activeView === "media" ? (
+            <MediaLibrary
+              onUseInDraft={(asset) => {
+                if (!asset.publicSourceUrl) return;
+                setGenerateForm((current) => ({
+                  ...current,
+                  channel: "instagram",
+                  mediaUrl: asset.publicSourceUrl ?? "",
+                }));
+                toast.success("Media source added to an Instagram draft", {
+                  description: asset.originalName,
+                });
+                navigate("create");
+              }}
+            />
           ) : null}
 
           {!loading && appState && activeView === "seo" ? (

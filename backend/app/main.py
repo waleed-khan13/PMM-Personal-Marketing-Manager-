@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app import __version__
 from app.config import get_settings
@@ -36,6 +36,15 @@ from app.lead_store import (
     update_lead_score_override,
     update_lead_status,
 )
+from app.media_store import (
+    MAX_MEDIA_BYTES,
+    create_media_asset,
+    delete_media_asset,
+    list_media_assets,
+    media_asset_path,
+    transform_media_asset,
+    update_media_asset,
+)
 from app.outreach_store import (
     create_outreach_draft,
     decide_outreach_draft,
@@ -62,6 +71,8 @@ from app.schemas import (
     LeadScoreOverrideUpdate,
     LeadStatusUpdate,
     LeadSuppressionUpdate,
+    MediaAssetUpdate,
+    MediaTransformRequest,
     OutreachDecisionRequest,
     OutreachDraftUpdate,
     OutreachExportRequest,
@@ -193,6 +204,57 @@ def health() -> dict[str, Any]:
 @app.get("/api/state")
 def get_state() -> JSONResponse:
     return JSONResponse(state_response(), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/media")
+def get_media_assets() -> JSONResponse:
+    return JSONResponse(list_media_assets(), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/media")
+async def upload_media_asset(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    data = await file.read(MAX_MEDIA_BYTES + 1)
+    await file.close()
+    if len(data) > MAX_MEDIA_BYTES:
+        raise AppError("Images must be 10 MB or smaller.", 413)
+    result = create_media_asset(data, file.filename)
+    return {"ok": True, **result}
+
+
+@app.get("/api/media/{asset_id}/content")
+def get_media_content(asset_id: str) -> FileResponse:
+    path, mime_type = media_asset_path(asset_id, "content")
+    return FileResponse(
+        path,
+        media_type=mime_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/api/media/{asset_id}/preview")
+def get_media_preview(asset_id: str) -> FileResponse:
+    path, mime_type = media_asset_path(asset_id, "preview")
+    return FileResponse(
+        path,
+        media_type=mime_type,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.patch("/api/media/{asset_id}")
+def change_media_asset(asset_id: str, payload: MediaAssetUpdate) -> dict[str, Any]:
+    return {"ok": True, "asset": update_media_asset(asset_id, payload)}
+
+
+@app.post("/api/media/{asset_id}/transform")
+def create_media_transform(asset_id: str, payload: MediaTransformRequest) -> dict[str, Any]:
+    result = transform_media_asset(asset_id, payload.preset)
+    return {"ok": True, **result}
+
+
+@app.delete("/api/media/{asset_id}")
+def remove_media_asset(asset_id: str) -> dict[str, str | bool]:
+    return {"ok": True, **delete_media_asset(asset_id)}
 
 
 @app.get("/api/seo/audits")

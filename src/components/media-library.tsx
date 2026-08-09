@@ -1,0 +1,414 @@
+"use client";
+
+import {
+  AlertTriangle,
+  Check,
+  Crop,
+  FileImage,
+  HardDrive,
+  ImageIcon,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
+import Image from "next/image";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import type { MediaAsset, MediaLibraryResponse } from "@/lib/app-types";
+import { requestJson } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+type TransformPreset = "square" | "portrait" | "landscape";
+
+type Props = {
+  onUseInDraft: (asset: MediaAsset) => void;
+};
+
+const transformLabels: Record<TransformPreset, string> = {
+  square: "Square 1080",
+  portrait: "Portrait 4:5",
+  landscape: "Landscape",
+};
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+    new Date(value),
+  );
+}
+
+async function uploadAsset(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch("/api/media", { method: "POST", body });
+  const payload = await response.json().catch(() => ({})) as {
+    asset?: MediaAsset;
+    deduplicated?: boolean;
+    error?: string;
+  };
+  if (!response.ok || !payload.asset) {
+    throw new Error(payload.error || `Upload failed (${response.status}).`);
+  }
+  return { asset: payload.asset, deduplicated: Boolean(payload.deduplicated) };
+}
+
+export function MediaLibrary({ onUseInDraft }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [library, setLibrary] = useState<MediaLibraryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [editAsset, setEditAsset] = useState<MediaAsset | null>(null);
+  const [editForm, setEditForm] = useState({ altText: "", publicSourceUrl: "" });
+  const [deleteAsset, setDeleteAsset] = useState<MediaAsset | null>(null);
+
+  const loadLibrary = useCallback(async () => {
+    setLoading(true);
+    try {
+      setLibrary(await requestJson<MediaLibraryResponse>("/api/media", { cache: "no-store" }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load the media library.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void requestJson<MediaLibraryResponse>("/api/media", { cache: "no-store" })
+      .then((response) => {
+        if (!cancelled) setLibrary(response);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "Could not load the media library.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function submitUpload(event: FormEvent) {
+    event.preventDefault();
+    if (!uploadFile) return;
+    setBusy("upload");
+    try {
+      const result = await uploadAsset(uploadFile);
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await loadLibrary();
+      toast.success(result.deduplicated ? "Existing asset reused" : "Image stored locally", {
+        description: result.deduplicated
+          ? "The same image was already in your library."
+          : `${result.asset.width}×${result.asset.height} · ${formatBytes(result.asset.byteSize)}`,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function openEdit(asset: MediaAsset) {
+    setEditAsset(asset);
+    setEditForm({ altText: asset.altText, publicSourceUrl: asset.publicSourceUrl ?? "" });
+  }
+
+  async function saveMetadata(event: FormEvent) {
+    event.preventDefault();
+    if (!editAsset) return;
+    setBusy(`edit-${editAsset.id}`);
+    try {
+      const response = await requestJson<{ ok: boolean; asset: MediaAsset }>(`/api/media/${editAsset.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          altText: editForm.altText,
+          publicSourceUrl: editForm.publicSourceUrl || null,
+        }),
+      });
+      setLibrary((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.id === response.asset.id ? response.asset : item),
+      } : current);
+      setEditAsset(null);
+      toast.success("Media metadata saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save media metadata.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function transformAsset(asset: MediaAsset, preset: TransformPreset) {
+    setBusy(`transform-${asset.id}-${preset}`);
+    try {
+      const response = await requestJson<{ ok: boolean; asset: MediaAsset; deduplicated: boolean }>(
+        `/api/media/${asset.id}/transform`,
+        { method: "POST", body: JSON.stringify({ preset }) },
+      );
+      await loadLibrary();
+      toast.success(response.deduplicated ? "Existing transform reused" : `${transformLabels[preset]} created`, {
+        description: response.asset.originalName,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image transform failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteAsset) return;
+    setBusy(`delete-${deleteAsset.id}`);
+    try {
+      await requestJson<{ ok: boolean; message: string }>(`/api/media/${deleteAsset.id}`, {
+        method: "DELETE",
+      });
+      setLibrary((current) => current ? {
+        ...current,
+        items: current.items.filter((item) => item.id !== deleteAsset.id),
+        total: Math.max(0, current.total - 1),
+      } : current);
+      toast.success("Media asset deleted from this computer");
+      setDeleteAsset(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete the media asset.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const maximum = library?.maxUploadBytes ?? 10 * 1024 * 1024;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="overflow-hidden border-zinc-800 bg-[#060606]">
+          <CardHeader className="border-b border-zinc-900 bg-[radial-gradient(circle_at_top_left,rgba(168,85,247,0.12),transparent_38%)]">
+            <div className="flex items-center gap-3">
+              <div className="grid size-10 place-items-center rounded-md border border-violet-500/20 bg-violet-500/5 text-violet-300">
+                <Upload className="size-4" />
+              </div>
+              <div>
+                <CardTitle>Import a local image</CardTitle>
+                <CardDescription>Verified raster files are stored under the private LocalGrowth data directory.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={submitUpload}>
+              <div className="rounded-lg border border-dashed border-zinc-700 bg-black p-5">
+                <Label className="sr-only" htmlFor="media-upload">Choose local image file</Label>
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  id="media-upload"
+                  onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                  ref={fileInputRef}
+                  type="file"
+                />
+                <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+                  <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-500">
+                    <FileImage className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-200">
+                      {uploadFile?.name ?? "JPEG, PNG, or WebP"}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {uploadFile ? formatBytes(uploadFile.size) : `Maximum ${formatBytes(maximum)} · decoded content is verified`}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={() => fileInputRef.current?.click()} type="button" variant="outline">
+                      <Plus /> Choose image
+                    </Button>
+                    <Button disabled={!uploadFile || busy === "upload"} type="submit">
+                      {busy === "upload" ? <Loader2 className="animate-spin" /> : <Upload />}
+                      Store locally
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="border-zinc-800 bg-[#050505]">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>Storage boundary</CardTitle>
+                <CardDescription>Private by default, explicit when external.</CardDescription>
+              </div>
+              <HardDrive className="size-4 text-violet-400" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs leading-5 text-zinc-500">
+            <div className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-400" /><span>Originals and previews stay on this computer with random storage names.</span></div>
+            <Separator className="bg-zinc-900" />
+            <div className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" /><span>Instagram cannot fetch a localhost file. Add an HTTPS source only when the same asset is publicly hosted.</span></div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold tracking-[0.16em] text-zinc-600 uppercase">Local assets</p>
+          <h2 className="mt-1 text-lg font-semibold text-zinc-100">{library?.total ?? 0} stored image{library?.total === 1 ? "" : "s"}</h2>
+        </div>
+        <Button disabled={loading} onClick={() => void loadLibrary()} type="button" variant="outline">
+          <RefreshCw className={cn(loading && "animate-spin")} /> Refresh
+        </Button>
+      </div>
+
+      {loading && !library ? (
+        <div className="grid min-h-60 place-items-center rounded-lg border border-zinc-900 bg-[#050505] text-zinc-600">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
+      ) : library?.items.length ? (
+        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+          {library.items.map((asset) => (
+            <Card className="group overflow-hidden border-zinc-800 bg-[#060606]" key={asset.id}>
+              <div className="relative aspect-[16/10] overflow-hidden border-b border-zinc-900 bg-black">
+                <Image
+                  alt={asset.altText || `Preview of ${asset.originalName}`}
+                  className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                  fill
+                  sizes="(min-width: 1536px) 30vw, (min-width: 768px) 45vw, 100vw"
+                  src={asset.previewUrl}
+                  unoptimized
+                />
+                <div className="absolute top-3 left-3 flex gap-2">
+                  <Badge className="border-black/50 bg-black/80 text-zinc-300" variant="outline">{asset.source.replace("transform:", "")}</Badge>
+                  {asset.instagramReady ? <Badge className="border-emerald-500/30 bg-black/80 text-emerald-300" variant="outline">HTTPS ready</Badge> : null}
+                </div>
+              </div>
+              <CardContent className="space-y-4 p-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-zinc-200" title={asset.originalName}>{asset.originalName}</p>
+                  <p className="mt-1 font-mono text-[10px] text-zinc-600">{asset.width}×{asset.height} · {formatBytes(asset.byteSize)} · {asset.mimeType.replace("image/", "")}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(transformLabels) as TransformPreset[]).map((preset) => (
+                    <Button
+                      aria-label={`Create ${transformLabels[preset]} transform of ${asset.originalName}`}
+                      disabled={busy?.startsWith(`transform-${asset.id}`)}
+                      key={preset}
+                      onClick={() => void transformAsset(asset, preset)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      {busy === `transform-${asset.id}-${preset}` ? <Loader2 className="animate-spin" /> : <Crop />}
+                      <span className="hidden xl:inline">{preset}</span>
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-900 pt-3">
+                  <div className="flex gap-1">
+                    <Button aria-label={`Edit ${asset.originalName}`} onClick={() => openEdit(asset)} size="icon-sm" type="button" variant="ghost"><Pencil /></Button>
+                    <Button aria-label={`Delete ${asset.originalName}`} onClick={() => setDeleteAsset(asset)} size="icon-sm" type="button" variant="ghost"><Trash2 /></Button>
+                  </div>
+                  <Button
+                    disabled={!asset.instagramReady}
+                    onClick={() => onUseInDraft(asset)}
+                    size="sm"
+                    title={asset.instagramReady ? "Use the public HTTPS source in an Instagram draft" : "Add a public HTTPS source first"}
+                    type="button"
+                  >
+                    <Send /> Use in draft
+                  </Button>
+                </div>
+                <p className="text-[10px] text-zinc-700">Stored {formatDate(asset.createdAt)}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid min-h-64 place-items-center rounded-lg border border-zinc-900 bg-[#050505] px-6 text-center">
+          <div>
+            <div className="mx-auto grid size-12 place-items-center rounded-lg border border-zinc-800 bg-black text-zinc-600"><ImageIcon className="size-5" /></div>
+            <h2 className="mt-4 text-sm font-medium text-zinc-200">No media stored yet</h2>
+            <p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Upload the first campaign image. LocalGrowth will verify, fingerprint, preview, and store it locally.</p>
+          </div>
+        </div>
+      )}
+
+      <Dialog onOpenChange={(open) => !open && setEditAsset(null)} open={Boolean(editAsset)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit media metadata</DialogTitle>
+            <DialogDescription>Alt text stays local. The optional HTTPS source must point to this same image.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" id="media-metadata-form" onSubmit={saveMetadata}>
+            <div className="space-y-2">
+              <Label htmlFor="media-alt-text">Alt text</Label>
+              <Textarea id="media-alt-text" maxLength={500} onChange={(event) => setEditForm((current) => ({ ...current, altText: event.target.value }))} placeholder="Describe the image for accessibility" rows={3} value={editForm.altText} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="media-public-source">Public HTTPS source</Label>
+              <Input id="media-public-source" onChange={(event) => setEditForm((current) => ({ ...current, publicSourceUrl: event.target.value }))} pattern="https://.+" placeholder="https://cdn.example.com/campaign.webp" type="url" value={editForm.publicSourceUrl} />
+              <p className="text-[11px] leading-5 text-zinc-600">Required only when Meta must fetch the asset for Instagram publishing.</p>
+            </div>
+          </form>
+          <DialogFooter className="border-zinc-800 bg-[#090909]">
+            <Button onClick={() => setEditAsset(null)} type="button" variant="ghost"><X /> Cancel</Button>
+            <Button disabled={Boolean(editAsset && busy === `edit-${editAsset.id}`)} form="media-metadata-form" type="submit">
+              {editAsset && busy === `edit-${editAsset.id}` ? <Loader2 className="animate-spin" /> : <Check />} Save metadata
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={(open) => !open && setDeleteAsset(null)} open={Boolean(deleteAsset)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete {deleteAsset?.originalName}?</DialogTitle>
+            <DialogDescription>The original and generated preview will be removed from this computer.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 rounded-md border border-red-500/20 bg-red-500/5 p-3 text-xs leading-5 text-red-200">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" /> This deletion cannot be undone. Existing remote copies are not affected.
+          </div>
+          <DialogFooter className="border-zinc-800 bg-[#090909]">
+            <Button disabled={Boolean(deleteAsset && busy === `delete-${deleteAsset.id}`)} onClick={() => setDeleteAsset(null)} type="button" variant="ghost">Cancel</Button>
+            <Button disabled={Boolean(deleteAsset && busy === `delete-${deleteAsset.id}`)} onClick={() => void confirmDelete()} type="button" variant="destructive">
+              {deleteAsset && busy === `delete-${deleteAsset.id}` ? <Loader2 className="animate-spin" /> : <Trash2 />} Delete local files
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

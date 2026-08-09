@@ -66,10 +66,36 @@ export interface GeneratedPost {
 export interface AuditEvent {
   id: string;
   action: string;
-  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead" | "outreach" | "seo";
+  entityType: "settings" | "provider" | "post" | "publisher" | "scheduler" | "connector" | "lead" | "outreach" | "seo" | "media";
   entityId: string;
   summary: string;
   createdAt: string;
+}
+
+export interface MediaAsset {
+  id: string;
+  originalName: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+  byteSize: number;
+  width: number;
+  height: number;
+  sha256: string;
+  source: string;
+  sourceAssetId: string | null;
+  publicSourceUrl: string | null;
+  altText: string;
+  contentUrl: string;
+  previewUrl: string;
+  instagramReady: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaLibraryResponse {
+  items: MediaAsset[];
+  total: number;
+  maxUploadBytes: number;
+  storagePolicy: "local-only";
 }
 
 export interface LocalJob {
