@@ -33,7 +33,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] Meta Pages adapter with encrypted Page tokens, health checks, and revision-bound immediate or scheduled Facebook publishing.
 - [x] Instagram Professional single-image publishing with modern Instagram Login scopes, encrypted tokens, public-media validation, container status polling, and revision-bound immediate or scheduled delivery.
 - [x] LinkedIn Member text publishing with OIDC identity checks, encrypted 3-legged OAuth tokens, pinned version headers, and revision-bound immediate or scheduled delivery.
-- [ ] LinkedIn Company Page publishing for operators with approved organization access and an eligible Page role.
+- [x] Access-gated LinkedIn Company Page text publishing with OIDC identity checks, `ORGANIC_SHARE_CREATE` authorization verification, encrypted tokens, and exact-revision delivery.
 - [x] Slack Socket Mode approval listener, outbound Block Kit requests, and version-bound interactive decisions.
 - [x] WordPress REST publisher with encrypted Application Passwords, health checks, remote links, and durable Blog scheduling.
 - [ ] WhatsApp notification adapter; interactive approval remains optional because Meta requires a reachable webhook.

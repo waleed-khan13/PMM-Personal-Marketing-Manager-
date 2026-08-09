@@ -32,6 +32,7 @@ PUBLISHER_NAMES = {
     "facebook": "Meta Pages",
     "instagram": "Instagram",
     "linkedin": "LinkedIn",
+    "linkedin-company": "LinkedIn Company Page",
 }
 
 
@@ -160,7 +161,15 @@ def _import_legacy_json(session: Session, path: Path) -> None:
         )
     )
 
-    allowed_channels = {"linkedin", "instagram", "facebook", "x", "telegram", "blog"}
+    allowed_channels = {
+        "linkedin",
+        "linkedin-company",
+        "instagram",
+        "facebook",
+        "x",
+        "telegram",
+        "blog",
+    }
     allowed_statuses = {"pending", "approved", "rejected", "publishing", "published", "failed"}
     for raw_post in payload.get("posts", []):
         if not isinstance(raw_post, dict):

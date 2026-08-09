@@ -11,7 +11,7 @@ LocalGrowth OS does not scrape LinkedIn pages or automate engagement through bro
 - User-owned CSV/CRM imports and manual records.
 - LinkedIn Lead Gen Forms or other documented APIs when access is granted.
 
-The lead vault implements the user-owned export path. Each imported record keeps source evidence, deduplicates locally, and remains subject to the global suppression list; it does not fetch or automate LinkedIn pages. The LinkedIn Member publisher is a separate outbound-only integration: it accepts an operator-supplied OAuth token, verifies the consenting member through OpenID Connect userinfo, and sends only exact approved text revisions through the official Posts API.
+The lead vault implements the user-owned export path. Each imported record keeps source evidence, deduplicates locally, and remains subject to the global suppression list; it does not fetch or automate LinkedIn pages. The LinkedIn publishers are separate outbound-only integrations: the Member adapter verifies the consenting member through OpenID Connect, while the Company Page adapter additionally verifies LinkedIn's `ORGANIC_SHARE_CREATE` authorization for the configured organization. Both accept operator-supplied OAuth tokens and send only exact approved text revisions through the official Posts API.
 
 References:
 

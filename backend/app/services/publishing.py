@@ -6,7 +6,10 @@ from typing import Any
 from app.connector_store import primary_connector_runtime
 from app.errors import AppError
 from app.services.instagram import publish_instagram_image
-from app.services.linkedin import publish_linkedin_member_post
+from app.services.linkedin import (
+    publish_linkedin_member_post,
+    publish_linkedin_organization_post,
+)
 from app.services.meta import publish_facebook_page_post
 from app.services.telegram import publish_post as publish_telegram_post
 from app.services.wordpress import publish_wordpress_post
@@ -44,6 +47,9 @@ def resolve_publish_target(channel: str) -> PublishTarget:
     if channel == "linkedin":
         runtime = primary_connector_runtime("linkedin", verified_only=True)
         return PublishTarget(channel=channel, name="LinkedIn", runtime=runtime)
+    if channel == "linkedin-company":
+        runtime = primary_connector_runtime("linkedin-organization", verified_only=True)
+        return PublishTarget(channel=channel, name="LinkedIn Company Page", runtime=runtime)
     raise AppError(f"{channel} publisher is not installed yet.")
 
 
@@ -82,6 +88,14 @@ async def publish_to_target(target: PublishTarget, post: dict[str, Any]) -> Publ
     if target.channel == "linkedin":
         result = await publish_linkedin_member_post(
             str(target.runtime["config"].get("person_id") or ""),
+            str(target.runtime["config"].get("api_version") or "202607"),
+            str(target.runtime["secrets"].get("access_token") or ""),
+            post,
+        )
+        return PublishResult(remote_id=result.remote_id, remote_url=result.remote_url)
+    if target.channel == "linkedin-company":
+        result = await publish_linkedin_organization_post(
+            str(target.runtime["config"].get("organization_id") or ""),
             str(target.runtime["config"].get("api_version") or "202607"),
             str(target.runtime["secrets"].get("access_token") or ""),
             post,

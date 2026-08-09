@@ -33,7 +33,7 @@ async function expectNoAccessibilityViolations(page: Page, testInfo: TestInfo, n
   expect(violations, `${name} has automated WCAG A/AA violations`).toEqual([]);
 }
 
-test("runs real approved WordPress, Facebook, Instagram, and LinkedIn publishing workflows", async ({ page }) => {
+test("runs real approved WordPress, Facebook, Instagram, LinkedIn member, and Company Page publishing workflows", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
 
@@ -301,7 +301,7 @@ test("runs real approved WordPress, Facebook, Instagram, and LinkedIn publishing
     "Create one useful professional lesson for my LinkedIn network.",
   );
   await page.getByLabel("Channel").click();
-  await page.getByRole("option", { name: "LinkedIn" }).click();
+  await page.getByRole("option", { name: "LinkedIn", exact: true }).click();
 
   const linkedinGenerateResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/posts/generate") && response.request().method() === "POST",
@@ -374,6 +374,97 @@ test("runs real approved WordPress, Facebook, Instagram, and LinkedIn publishing
   });
   expect(linkedinMockState.lastLinkedInPost.commentary).toContain("Share one practical lesson");
   expect(linkedinMockState.lastLinkedInPost.commentary).toContain("#HumanReviewed");
+
+  await navigate(page, "Integrations", "Connections");
+  const linkedinCompanyForm = page.getByLabel("LinkedIn Organization ID").locator("xpath=ancestor::form");
+  await linkedinCompanyForm.getByLabel("Connection name").fill("E2E LinkedIn Company Page");
+  await linkedinCompanyForm.getByLabel("LinkedIn Organization ID").fill("5515715");
+  await linkedinCompanyForm.getByLabel("Company Page operator Member ID").fill("782bbtaQ");
+  await linkedinCompanyForm.getByLabel("Company Page API version").fill("202607");
+  await linkedinCompanyForm.getByLabel("Company Page OAuth Access Token").fill("e2e-linkedin-company-token");
+  await linkedinCompanyForm.getByRole("button", { name: "Save & verify permission" }).click();
+  await expect(page.getByText("Waleed Khan can publish to LinkedIn Page 5515715.")).toBeVisible();
+
+  await navigate(page, "Create content", "Create a draft");
+  await page.getByLabel("Topic or source brief").fill(
+    "Create one useful company lesson for our LinkedIn Page audience.",
+  );
+  await page.getByLabel("Channel").click();
+  await page.getByRole("option", { name: "LinkedIn Company Page", exact: true }).click();
+
+  const linkedinCompanyGenerateResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/posts/generate") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Generate review draft" }).click();
+  await expect((await linkedinCompanyGenerateResponse).status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: "Approval queue" })).toBeVisible();
+  await page.getByRole("button", { name: /^all / }).click();
+
+  const linkedinCompanyTitle = "A reviewed LinkedIn Company Page update";
+  const linkedinCompanyCard = page
+    .getByRole("heading", { level: 2, name: linkedinCompanyTitle })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await linkedinCompanyCard.getByRole("button", { name: "Approve" }).click();
+  await expect(linkedinCompanyCard.getByText("approved", { exact: true })).toBeVisible();
+
+  const linkedinCompanyPublishResponse = page.waitForResponse(
+    (response) => /\/api\/posts\/[^/]+\/publish$/.test(response.url()) && response.request().method() === "POST",
+  );
+  await linkedinCompanyCard.getByRole("button", { name: "Publish to Company Page" }).click();
+  await expect((await linkedinCompanyPublishResponse).status()).toBe(200);
+  await expect(linkedinCompanyCard.getByText("published", { exact: true })).toBeVisible();
+  await expect(linkedinCompanyCard.getByText("remote:urn:li:share:7190000000000000004", { exact: true })).toBeVisible();
+
+  const linkedinCompanyStateResponse = await page.request.get("/api/state");
+  const linkedinCompanyState = (await linkedinCompanyStateResponse.json()) as PublicAppState;
+  expect(linkedinCompanyState.posts).toHaveLength(5);
+  expect(linkedinCompanyState.posts.find((post) => post.channel === "linkedin-company")).toMatchObject({
+    remoteId: "urn:li:share:7190000000000000004",
+    revision: 1,
+    status: "published",
+    title: linkedinCompanyTitle,
+  });
+
+  const linkedinCompanyMockResponse = await page.request.get(`${mockBaseUrl}/__e2e/state`);
+  const linkedinCompanyMockState = (await linkedinCompanyMockResponse.json()) as {
+    generationRequests: number;
+    lastLinkedInOrganizationHeaders: {
+      authorization: string;
+      linkedinVersion: string;
+      restliVersion: string;
+    };
+    lastLinkedInOrganizationPost: {
+      author: string;
+      commentary: string;
+      distribution: { feedDistribution: string };
+      isReshareDisabledByAuthor: boolean;
+      lifecycleState: string;
+      visibility: string;
+    };
+    linkedinAuthChecks: number;
+    linkedinOrganizationAuthChecks: number;
+    linkedinOrganizationPublishes: number;
+  };
+  expect(linkedinCompanyMockState).toMatchObject({
+    generationRequests: 5,
+    linkedinAuthChecks: 2,
+    linkedinOrganizationAuthChecks: 1,
+    linkedinOrganizationPublishes: 1,
+  });
+  expect(linkedinCompanyMockState.lastLinkedInOrganizationHeaders).toEqual({
+    authorization: "Bearer e2e-linkedin-company-token",
+    linkedinVersion: "202607",
+    restliVersion: "2.0.0",
+  });
+  expect(linkedinCompanyMockState.lastLinkedInOrganizationPost).toMatchObject({
+    author: "urn:li:organization:5515715",
+    distribution: { feedDistribution: "MAIN_FEED" },
+    isReshareDisabledByAuthor: false,
+    lifecycleState: "PUBLISHED",
+    visibility: "PUBLIC",
+  });
+  expect(linkedinCompanyMockState.lastLinkedInOrganizationPost.commentary).toContain("Share one useful company lesson");
+  expect(linkedinCompanyMockState.lastLinkedInOrganizationPost.commentary).toContain("#HumanReviewed");
 });
 
 test("passes automated accessibility checks in core workflow views", async ({ page }, testInfo) => {

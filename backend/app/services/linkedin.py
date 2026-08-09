@@ -15,6 +15,7 @@ DEFAULT_LINKEDIN_API_BASE_URL = "https://api.linkedin.com"
 DEFAULT_LINKEDIN_VERSION = "202607"
 _LINKEDIN_VERSION_PATTERN = re.compile(r"20\d{4}")
 _PERSON_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{2,128}")
+_ORGANIZATION_ID_PATTERN = re.compile(r"\d{1,30}")
 _POST_URN_PATTERN = re.compile(r"urn:li:(?:share|ugcPost):\d+")
 
 
@@ -64,6 +65,13 @@ def validate_linkedin_person_id(value: str) -> str:
     if not _PERSON_ID_PATTERN.fullmatch(person_id):
         raise ExternalServiceError("LinkedIn Member ID contains unsupported characters.")
     return person_id
+
+
+def validate_linkedin_organization_id(value: str) -> str:
+    organization_id = value.strip()
+    if not _ORGANIZATION_ID_PATTERN.fullmatch(organization_id):
+        raise ExternalServiceError("LinkedIn Organization ID must contain digits only.")
+    return organization_id
 
 
 def _api_base_url() -> str:
@@ -156,6 +164,51 @@ async def test_linkedin_connection(
     }
 
 
+async def test_linkedin_organization_connection(
+    person_id: str,
+    organization_id: str,
+    api_version: str,
+    access_token: str,
+) -> dict[str, str]:
+    member = await test_linkedin_connection(person_id, access_token)
+    verified_organization_id = validate_linkedin_organization_id(organization_id)
+    person_urn = f"urn:li:person:{member['personId']}"
+    organization_urn = f"urn:li:organization:{verified_organization_id}"
+    encoded_person_urn = person_urn.replace(":", "%3A")
+    encoded_organization_urn = organization_urn.replace(":", "%3A")
+    resource = (
+        "rest/organizationAuthorizations/"
+        f"(impersonator:{encoded_person_urn},organization:{encoded_organization_urn},"
+        "action:(organizationContentAuthorizationAction:(actionType:ORGANIC_SHARE_CREATE)))"
+    )
+    response = await linkedin_api_request(
+        resource,
+        access_token,
+        api_version=api_version,
+        timeout=20,
+    )
+    status = response.payload.get("status")
+    approved = isinstance(status, dict) and any(
+        str(key).endswith(".Approved") for key in status
+    )
+    if not approved:
+        raise ExternalServiceError(
+            "This member is not authorized to create organic posts for that LinkedIn Page."
+        )
+    remote_person_urn = str(response.payload.get("impersonator") or "").strip()
+    remote_organization_urn = str(response.payload.get("organization") or "").strip()
+    if remote_person_urn != person_urn or remote_organization_urn != organization_urn:
+        raise ExternalServiceError(
+            "LinkedIn returned organization authorization for a different member or Page."
+        )
+    return {
+        **member,
+        "organizationId": verified_organization_id,
+        "organizationUrn": organization_urn,
+        "authorization": "ORGANIC_SHARE_CREATE",
+    }
+
+
 def approved_linkedin_commentary(post: dict[str, Any]) -> str:
     body = str(post.get("body") or "").strip()
     hashtags = [
@@ -178,6 +231,40 @@ async def publish_linkedin_member_post(
     post: dict[str, Any],
 ) -> LinkedInPublishResult:
     author = f"urn:li:person:{validate_linkedin_person_id(person_id)}"
+    response = await linkedin_api_request(
+        "rest/posts",
+        access_token,
+        method="POST",
+        api_version=api_version,
+        json_body={
+            "author": author,
+            "commentary": approved_linkedin_commentary(post),
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [],
+                "thirdPartyDistributionChannels": [],
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False,
+        },
+        timeout=45,
+    )
+    remote_id = str(
+        response.headers.get("x-restli-id") or response.payload.get("id") or ""
+    ).strip()
+    if not _POST_URN_PATTERN.fullmatch(remote_id):
+        raise ExternalServiceError("LinkedIn did not return a valid published post URN.")
+    return LinkedInPublishResult(remote_id=remote_id)
+
+
+async def publish_linkedin_organization_post(
+    organization_id: str,
+    api_version: str,
+    access_token: str,
+    post: dict[str, Any],
+) -> LinkedInPublishResult:
+    author = f"urn:li:organization:{validate_linkedin_organization_id(organization_id)}"
     response = await linkedin_api_request(
         "rest/posts",
         access_token,

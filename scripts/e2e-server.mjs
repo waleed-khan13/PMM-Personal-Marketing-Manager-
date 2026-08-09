@@ -25,12 +25,16 @@ const mockState = {
   instagramPublishes: 0,
   linkedinAuthChecks: 0,
   linkedinPublishes: 0,
+  linkedinOrganizationAuthChecks: 0,
+  linkedinOrganizationPublishes: 0,
   lastPublishedPost: null,
   lastFacebookPost: null,
   lastInstagramContainer: null,
   lastInstagramPublish: null,
   lastLinkedInPost: null,
   lastLinkedInHeaders: null,
+  lastLinkedInOrganizationPost: null,
+  lastLinkedInOrganizationHeaders: null,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -74,34 +78,43 @@ const mockServer = createServer(async (request, response) => {
       await readJson(request);
       const facebookDraft = mockState.generationRequests === 2;
       const instagramDraft = mockState.generationRequests === 3;
-      const linkedinDraft = mockState.generationRequests > 3;
+      const linkedinDraft = mockState.generationRequests === 4;
+      const linkedinOrganizationDraft = mockState.generationRequests > 4;
       sendJson(response, 200, {
         choices: [
           {
             message: {
               content: JSON.stringify({
-                title: linkedinDraft
+                title: linkedinOrganizationDraft
+                  ? "A reviewed LinkedIn Company Page update"
+                  : linkedinDraft
                   ? "A reviewed LinkedIn member update"
                   : instagramDraft
                   ? "A reviewed Instagram image update"
                   : facebookDraft
                     ? "A useful Facebook Page update"
                     : "A practical local growth checklist",
-                body: linkedinDraft
+                body: linkedinOrganizationDraft
+                  ? "Share one useful company lesson, make the customer value clear, and publish only the exact reviewed Page update."
+                  : linkedinDraft
                   ? "Share one practical lesson, make the professional value clear, and keep the published text human-reviewed."
                   : instagramDraft
                   ? "Show one practical campaign idea, keep the caption useful, and publish the exact reviewed image."
                   : facebookDraft
                   ? "Share one useful local insight, invite a relevant response, and keep the final post human-reviewed."
                   : "Start with one clear customer problem, publish a useful answer, and review the result before the next post.",
-                hashtags: linkedinDraft
+                hashtags: linkedinOrganizationDraft
+                  ? ["#CompanyGrowth", "#HumanReviewed"]
+                  : linkedinDraft
                   ? ["#ProfessionalGrowth", "#HumanReviewed"]
                   : instagramDraft
                   ? ["#InstagramForBusiness", "#HumanReviewed"]
                   : facebookDraft
                     ? ["#LocalBusiness", "#FacebookMarketing"]
                     : ["#LocalGrowth", "#SmallBusiness"],
-                rationale: linkedinDraft
+                rationale: linkedinOrganizationDraft
+                  ? "A concise Page post exercises permission-verified LinkedIn organization publishing."
+                  : linkedinDraft
                   ? "A concise public text post exercises the official LinkedIn Posts API member flow."
                   : instagramDraft
                   ? "A public image URL and exact approved caption exercise Instagram's container workflow."
@@ -228,7 +241,7 @@ const mockServer = createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/linkedin/v2/userinfo") {
       mockState.linkedinAuthChecks += 1;
-      if (request.headers.authorization !== "Bearer e2e-linkedin-access-token") {
+      if (!["Bearer e2e-linkedin-access-token", "Bearer e2e-linkedin-company-token"].includes(request.headers.authorization)) {
         sendJson(response, 401, { status: 401, message: "Invalid OAuth access token." });
         return;
       }
@@ -241,14 +254,33 @@ const mockServer = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname.startsWith("/linkedin/rest/organizationAuthorizations/")) {
+      mockState.linkedinOrganizationAuthChecks += 1;
+      if (request.headers.authorization !== "Bearer e2e-linkedin-company-token") {
+        sendJson(response, 401, { status: 401, message: "Invalid Company Page token." });
+        return;
+      }
+      if (!url.pathname.includes("ORGANIC_SHARE_CREATE")) {
+        sendJson(response, 400, { status: 400, message: "Missing organic share authorization action." });
+        return;
+      }
+      sendJson(response, 200, {
+        impersonator: "urn:li:person:782bbtaQ",
+        organization: "urn:li:organization:5515715",
+        status: { "com.linkedin.organization.Approved": {} },
+      });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/linkedin/rest/posts") {
-      mockState.linkedinPublishes += 1;
-      mockState.lastLinkedInHeaders = {
+      const companyPublish = request.headers.authorization === "Bearer e2e-linkedin-company-token";
+      const validMemberPublish = request.headers.authorization === "Bearer e2e-linkedin-access-token";
+      const capturedHeaders = {
         authorization: request.headers.authorization,
         linkedinVersion: request.headers["linkedin-version"],
         restliVersion: request.headers["x-restli-protocol-version"],
       };
-      if (request.headers.authorization !== "Bearer e2e-linkedin-access-token") {
+      if (!companyPublish && !validMemberPublish) {
         sendJson(response, 401, { status: 401, message: "Invalid OAuth access token." });
         return;
       }
@@ -260,12 +292,23 @@ const mockServer = createServer(async (request, response) => {
         sendJson(response, 400, { status: 400, message: "Missing Rest.li version." });
         return;
       }
-      mockState.lastLinkedInPost = await readJson(request);
+      const publishedBody = await readJson(request);
+      if (companyPublish) {
+        mockState.linkedinOrganizationPublishes += 1;
+        mockState.lastLinkedInOrganizationHeaders = capturedHeaders;
+        mockState.lastLinkedInOrganizationPost = publishedBody;
+      } else {
+        mockState.linkedinPublishes += 1;
+        mockState.lastLinkedInHeaders = capturedHeaders;
+        mockState.lastLinkedInPost = publishedBody;
+      }
       response.writeHead(201, {
         "access-control-allow-origin": "*",
         "cache-control": "no-store",
         "content-type": "application/json; charset=utf-8",
-        "x-restli-id": "urn:li:share:7190000000000000003",
+        "x-restli-id": companyPublish
+          ? "urn:li:share:7190000000000000004"
+          : "urn:li:share:7190000000000000003",
       });
       response.end("{}");
       return;

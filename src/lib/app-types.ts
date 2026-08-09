@@ -1,5 +1,5 @@
 export type ProviderKind = "ollama" | "openai-compatible";
-export type ContentChannel = "linkedin" | "instagram" | "facebook" | "x" | "telegram" | "blog";
+export type ContentChannel = "linkedin" | "linkedin-company" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
 export type ConnectorCapability = "approval" | "notification" | "publish" | "leads" | "analytics" | "cms";

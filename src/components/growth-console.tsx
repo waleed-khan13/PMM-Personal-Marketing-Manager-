@@ -49,6 +49,10 @@ import {
   type LinkedInConnectorForm,
 } from "@/components/linkedin-connector-card";
 import {
+  LinkedInOrganizationConnectorCard,
+  type LinkedInOrganizationConnectorForm,
+} from "@/components/linkedin-organization-connector-card";
+import {
   MetaConnectorCard,
   type MetaConnectorForm,
 } from "@/components/meta-connector-card";
@@ -186,6 +190,7 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
 
 const channelLabels: Record<ContentChannel, string> = {
   linkedin: "LinkedIn",
+  "linkedin-company": "LinkedIn Company Page",
   instagram: "Instagram",
   facebook: "Facebook",
   x: "X / Twitter",
@@ -598,6 +603,14 @@ export function GrowthConsole() {
     accessToken: "",
     enabled: true,
   });
+  const [linkedinOrganizationForm, setLinkedinOrganizationForm] = useState<LinkedInOrganizationConnectorForm>({
+    name: "My LinkedIn Company Page",
+    personId: "",
+    organizationId: "",
+    apiVersion: "202607",
+    accessToken: "",
+    enabled: true,
+  });
   const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
@@ -694,6 +707,17 @@ export function GrowthConsole() {
             enabled: linkedin.enabled,
           });
         }
+        const linkedinOrganization = next.connectors.accounts.find((account) => account.adapterId === "linkedin-organization");
+        if (linkedinOrganization) {
+          setLinkedinOrganizationForm({
+            name: linkedinOrganization.name,
+            personId: String(linkedinOrganization.config.person_id ?? ""),
+            organizationId: String(linkedinOrganization.config.organization_id ?? ""),
+            apiVersion: String(linkedinOrganization.config.api_version ?? "202607"),
+            accessToken: "",
+            enabled: linkedinOrganization.enabled,
+          });
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -770,8 +794,13 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const linkedinOrganizationAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "linkedin-organization") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram", "linkedin"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram", "linkedin", "linkedin-organization"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -1353,6 +1382,64 @@ export function GrowthConsole() {
     }
   }
 
+  async function saveLinkedInOrganizationConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("linkedin-organization-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (linkedinOrganizationForm.accessToken.trim()) {
+        secrets.access_token = linkedinOrganizationForm.accessToken.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        linkedinOrganizationAccount
+          ? `/api/connectors/${linkedinOrganizationAccount.id}`
+          : "/api/connectors",
+        {
+          method: linkedinOrganizationAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "linkedin-organization",
+            name: linkedinOrganizationForm.name,
+            config: {
+              person_id: linkedinOrganizationForm.personId,
+              organization_id: linkedinOrganizationForm.organizationId,
+              api_version: linkedinOrganizationForm.apiVersion,
+            },
+            secrets,
+            scopes: ["openid", "profile", "w_organization_social", "rw_organization_admin"],
+            enabled: linkedinOrganizationForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setLinkedinOrganizationForm((current) => ({ ...current, accessToken: "" }));
+      if (!quiet) toast.success("LinkedIn Company Page connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the LinkedIn Company Page connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testLinkedInOrganizationConnection() {
+    const accountId = await saveLinkedInOrganizationConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("linkedin-organization-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "LinkedIn Company Page permission check failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function removeConnector() {
     if (!deleteConnector) return;
     const adapterId = deleteConnector.adapterId;
@@ -1397,6 +1484,15 @@ export function GrowthConsole() {
         setLinkedinForm({
           name: "My LinkedIn profile",
           personId: "",
+          apiVersion: "202607",
+          accessToken: "",
+          enabled: true,
+        });
+      } else if (adapterId === "linkedin-organization") {
+        setLinkedinOrganizationForm({
+          name: "My LinkedIn Company Page",
+          personId: "",
+          organizationId: "",
           apiVersion: "202607",
           accessToken: "",
           enabled: true,
@@ -1742,7 +1838,8 @@ export function GrowthConsole() {
                       || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled)
                       || (post.channel === "facebook" && metaAccount?.status === "verified" && metaAccount.enabled)
                       || (post.channel === "instagram" && Boolean(post.mediaUrl) && instagramAccount?.status === "verified" && instagramAccount.enabled)
-                      || (post.channel === "linkedin" && linkedinAccount?.status === "verified" && linkedinAccount.enabled);
+                      || (post.channel === "linkedin" && linkedinAccount?.status === "verified" && linkedinAccount.enabled)
+                      || (post.channel === "linkedin-company" && linkedinOrganizationAccount?.status === "verified" && linkedinOrganizationAccount.enabled);
                     return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
@@ -1801,7 +1898,7 @@ export function GrowthConsole() {
                             {post.status === "approved" && publisherReady ? (
                               <>
                                 <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
-                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : post.channel === "instagram" ? "Publish to Instagram" : post.channel === "linkedin" ? "Publish to LinkedIn" : "Publish now"}</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : post.channel === "instagram" ? "Publish to Instagram" : post.channel === "linkedin" ? "Publish to LinkedIn" : post.channel === "linkedin-company" ? "Publish to Company Page" : "Publish now"}</Button>
                               </>
                             ) : null}
                             {post.status === "approved" && post.channel === "blog" && !publisherReady ? (
@@ -1819,7 +1916,10 @@ export function GrowthConsole() {
                             {post.status === "approved" && post.channel === "linkedin" && !publisherReady ? (
                               <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect LinkedIn</Button>
                             ) : null}
-                            {post.status === "approved" && !["telegram", "blog", "facebook", "instagram", "linkedin"].includes(post.channel) ? (
+                            {post.status === "approved" && post.channel === "linkedin-company" && !publisherReady ? (
+                              <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect Company Page</Button>
+                            ) : null}
+                            {post.status === "approved" && !["telegram", "blog", "facebook", "instagram", "linkedin", "linkedin-company"].includes(post.channel) ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
                             ) : null}
                             {post.status === "publishing" ? (
@@ -2119,6 +2219,16 @@ export function GrowthConsole() {
                 onRemove={() => linkedinAccount && setDeleteConnector(linkedinAccount)}
                 onSave={(event) => void saveLinkedInConnector(event)}
                 onTest={() => void testLinkedInConnection()}
+              />
+
+              <LinkedInOrganizationConnectorCard
+                account={linkedinOrganizationAccount}
+                busy={busy}
+                form={linkedinOrganizationForm}
+                onChange={(patch) => setLinkedinOrganizationForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => linkedinOrganizationAccount && setDeleteConnector(linkedinOrganizationAccount)}
+                onSave={(event) => void saveLinkedInOrganizationConnector(event)}
+                onTest={() => void testLinkedInOrganizationConnection()}
               />
 
               <div>

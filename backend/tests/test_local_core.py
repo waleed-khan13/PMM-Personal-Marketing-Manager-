@@ -2089,3 +2089,296 @@ def test_linkedin_payload_versioning_and_token_redaction(monkeypatch) -> None:
             "timeout": 45,
         }
     ]
+
+
+def test_linkedin_company_connector_publishes_exact_approved_page_revision(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
+    from app.services.linkedin import LinkedInPublishResult
+
+    catalog = client.get("/api/connectors").json()["catalog"]
+    manifest = next(item for item in catalog if item["adapterId"] == "linkedin-organization")
+    assert manifest["name"] == "LinkedIn Company Page"
+    assert manifest["availability"] == "access-gated"
+    assert manifest["capabilities"] == ["publish"]
+    assert manifest["requiredScopes"] == [
+        "openid",
+        "profile",
+        "w_organization_social",
+        "rw_organization_admin",
+    ]
+
+    person_id = "782bbtaQ"
+    organization_id = "5515715"
+    access_token = "encrypted-linkedin-company-token"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "linkedin-organization",
+            "name": "LocalGrowth Company Page",
+            "config": {
+                "person_id": person_id,
+                "organization_id": organization_id,
+                "api_version": "202607",
+            },
+            "secrets": {"access_token": access_token},
+            "scopes": [
+                "openid",
+                "profile",
+                "w_organization_social",
+                "rw_organization_admin",
+            ],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    assert account["secretStatus"] == {"access_token": True}
+    assert access_token not in created.text
+
+    async def fake_company_test(_self, config, secrets):
+        assert config == {
+            "person_id": person_id,
+            "organization_id": organization_id,
+            "api_version": "202607",
+        }
+        assert secrets == {"access_token": access_token}
+        return ConnectorTestResult(
+            ok=True,
+            message="Waleed Khan can publish to LinkedIn Page 5515715.",
+            remote_account_id=organization_id,
+            details={
+                "personId": person_id,
+                "name": "Waleed Khan",
+                "organizationId": organization_id,
+                "organizationUrn": f"urn:li:organization:{organization_id}",
+                "authorization": "ORGANIC_SHARE_CREATE",
+                "apiVersion": "202607",
+            },
+        )
+
+    monkeypatch.setattr(
+        "app.connectors.linkedin.LinkedInOrganizationAdapter.test_connection",
+        fake_company_test,
+    )
+    tested = client.post(f"/api/connectors/{account['id']}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == organization_id
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Approved LinkedIn Company update",
+            body="This exact reviewed update should reach the connected Company Page.",
+            hashtags=["#LocalGrowth", "CompanyReviewed"],
+            rationale="Exercises the official LinkedIn organization Posts publisher.",
+        )
+
+    delivered: list[dict] = []
+
+    async def fake_company_publish(saved_organization_id, api_version, saved_token, post):
+        assert saved_organization_id == organization_id
+        assert api_version == "202607"
+        assert saved_token == access_token
+        delivered.append(post)
+        return LinkedInPublishResult(remote_id="urn:li:share:7190000000000000010")
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr(
+        "app.services.publishing.publish_linkedin_organization_post",
+        fake_company_publish,
+    )
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "LinkedIn Company launch",
+            "channel": "linkedin-company",
+            "tone": "Clear",
+            "objective": "Publish the exact approved Page update",
+            "notifyTelegram": False,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    approved = client.post(
+        f"/api/posts/{post['id']}/decision",
+        json={"decision": "approve", "revision": post["revision"]},
+    )
+    assert approved.status_code == 200
+
+    published = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert published.status_code == 200
+    final_post = next(item for item in published.json()["state"]["posts"] if item["id"] == post["id"])
+    assert final_post["status"] == "published"
+    assert final_post["remoteId"] == "urn:li:share:7190000000000000010"
+    assert len(delivered) == 1
+    assert delivered[0]["revision"] == post["revision"]
+    assert delivered[0]["body"] == post["body"]
+    assert delivered[0]["hashtags"] == post["hashtags"]
+
+    duplicate = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert duplicate.status_code == 400
+    assert len(delivered) == 1
+
+    client.put("/api/scheduler", json={"paused": True})
+    scheduled_post = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Scheduled LinkedIn Company update",
+            "channel": "linkedin-company",
+            "tone": "Clear",
+            "objective": "Verify the Company Page scheduler dispatch",
+            "notifyTelegram": False,
+        },
+    ).json()["post"]
+    client.post(
+        f"/api/posts/{scheduled_post['id']}/decision",
+        json={"decision": "approve", "revision": scheduled_post["revision"]},
+    )
+    scheduled = client.post(
+        f"/api/posts/{scheduled_post['id']}/schedule",
+        json={
+            "revision": scheduled_post["revision"],
+            "runAt": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        },
+    )
+    assert scheduled.status_code == 200
+    client.put("/api/scheduler", json={"paused": False})
+
+    deadline = time.monotonic() + 3
+    scheduled_state = client.get("/api/state").json()
+    while time.monotonic() < deadline:
+        scheduled_state = client.get("/api/state").json()
+        current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+        if current["status"] == "published":
+            break
+        time.sleep(0.05)
+    current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+    job = next(item for item in scheduled_state["jobs"] if item["id"] == scheduled.json()["job"]["id"])
+    assert current["status"] == "published"
+    assert current["remoteId"] == "urn:li:share:7190000000000000010"
+    assert job["status"] == "completed"
+    assert len(delivered) == 2
+
+
+def test_linkedin_company_authorization_and_payload(monkeypatch) -> None:
+    from app.errors import ExternalServiceError
+    from app.services.linkedin import (
+        LinkedInApiResponse,
+        publish_linkedin_organization_post,
+        test_linkedin_organization_connection,
+        validate_linkedin_organization_id,
+    )
+
+    assert validate_linkedin_organization_id("5515715") == "5515715"
+    with pytest.raises(ExternalServiceError, match="digits"):
+        validate_linkedin_organization_id("urn:li:organization:5515715")
+
+    async def fake_member_test(person_id, access_token):
+        assert person_id == "782bbtaQ"
+        assert access_token == "secret-company-token"
+        return {"personId": person_id, "name": "Waleed Khan"}
+
+    authorization_calls: list[dict] = []
+
+    async def fake_authorization_request(resource, access_token, **kwargs):
+        authorization_calls.append({"resource": resource, "access_token": access_token, **kwargs})
+        return LinkedInApiResponse(
+            payload={
+                "impersonator": "urn:li:person:782bbtaQ",
+                "organization": "urn:li:organization:5515715",
+                "status": {"com.linkedin.organization.Approved": {}},
+            },
+            headers={},
+        )
+
+    monkeypatch.setattr("app.services.linkedin.test_linkedin_connection", fake_member_test)
+    monkeypatch.setattr("app.services.linkedin.linkedin_api_request", fake_authorization_request)
+    details = asyncio.run(
+        test_linkedin_organization_connection(
+            "782bbtaQ",
+            "5515715",
+            "202607",
+            "secret-company-token",
+        )
+    )
+    assert details["organizationUrn"] == "urn:li:organization:5515715"
+    assert details["authorization"] == "ORGANIC_SHARE_CREATE"
+    assert authorization_calls == [
+        {
+            "resource": (
+                "rest/organizationAuthorizations/"
+                "(impersonator:urn%3Ali%3Aperson%3A782bbtaQ,"
+                "organization:urn%3Ali%3Aorganization%3A5515715,"
+                "action:(organizationContentAuthorizationAction:"
+                "(actionType:ORGANIC_SHARE_CREATE)))"
+            ),
+            "access_token": "secret-company-token",
+            "api_version": "202607",
+            "timeout": 20,
+        }
+    ]
+
+    async def fake_denied_request(*_args, **_kwargs):
+        return LinkedInApiResponse(
+            payload={
+                "impersonator": "urn:li:person:782bbtaQ",
+                "organization": "urn:li:organization:5515715",
+                "status": {
+                    "com.linkedin.organization.Denied": {
+                        "reasons": ["MEMBER_HAS_INSUFFICIENT_PERMISSIONS_IN_ACCESS_CONTROL"]
+                    }
+                },
+            },
+            headers={},
+        )
+
+    monkeypatch.setattr("app.services.linkedin.linkedin_api_request", fake_denied_request)
+    with pytest.raises(ExternalServiceError, match="not authorized"):
+        asyncio.run(
+            test_linkedin_organization_connection(
+                "782bbtaQ",
+                "5515715",
+                "202607",
+                "secret-company-token",
+            )
+        )
+
+    publish_calls: list[dict] = []
+
+    async def fake_publish_request(resource, access_token, **kwargs):
+        publish_calls.append({"resource": resource, "access_token": access_token, **kwargs})
+        return LinkedInApiResponse(
+            payload={},
+            headers={"x-restli-id": "urn:li:share:7190000000000000011"},
+        )
+
+    monkeypatch.setattr("app.services.linkedin.linkedin_api_request", fake_publish_request)
+    result = asyncio.run(
+        publish_linkedin_organization_post(
+            "5515715",
+            "202607",
+            "secret-company-token",
+            {"body": "Approved Page update", "hashtags": ["#LocalGrowth", "Reviewed"]},
+        )
+    )
+    assert result.remote_id == "urn:li:share:7190000000000000011"
+    assert publish_calls[0]["resource"] == "rest/posts"
+    assert publish_calls[0]["api_version"] == "202607"
+    assert publish_calls[0]["json_body"] == {
+        "author": "urn:li:organization:5515715",
+        "commentary": "Approved Page update\n\n#LocalGrowth #Reviewed",
+        "visibility": "PUBLIC",
+        "distribution": {
+            "feedDistribution": "MAIN_FEED",
+            "targetEntities": [],
+            "thirdPartyDistributionChannels": [],
+        },
+        "lifecycleState": "PUBLISHED",
+        "isReshareDisabledByAuthor": False,
+    }

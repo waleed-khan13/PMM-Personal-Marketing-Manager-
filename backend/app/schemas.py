@@ -48,7 +48,15 @@ class PollingUpdate(ApiModel):
 
 class GeneratePostRequest(ApiModel):
     topic: str = Field(min_length=1, max_length=1_000)
-    channel: Literal["linkedin", "instagram", "facebook", "x", "telegram", "blog"]
+    channel: Literal[
+        "linkedin",
+        "linkedin-company",
+        "instagram",
+        "facebook",
+        "x",
+        "telegram",
+        "blog",
+    ]
     tone: str = Field(default="Clear and confident", max_length=160)
     objective: str = Field(default="Build useful awareness", max_length=500)
     media_url: str | None = Field(default=None, max_length=2_048)
