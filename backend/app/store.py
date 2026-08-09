@@ -31,6 +31,7 @@ PUBLISHER_NAMES = {
     "blog": "WordPress",
     "facebook": "Meta Pages",
     "instagram": "Instagram",
+    "linkedin": "LinkedIn",
 }
 
 

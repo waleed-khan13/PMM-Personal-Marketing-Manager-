@@ -5,6 +5,7 @@ from typing import Any
 from app.connectors.base import ConnectorAdapter, ConnectorManifest
 from app.connectors.google_places import GooglePlacesAdapter
 from app.connectors.instagram import InstagramAdapter
+from app.connectors.linkedin import LinkedInMemberAdapter
 from app.connectors.meta import MetaPagesAdapter
 from app.connectors.slack import SlackAdapter
 from app.connectors.wordpress import WordPressAdapter
@@ -15,12 +16,14 @@ _wordpress = WordPressAdapter()
 _google_places = GooglePlacesAdapter()
 _meta = MetaPagesAdapter()
 _instagram = InstagramAdapter()
+_linkedin = LinkedInMemberAdapter()
 _adapters: dict[str, ConnectorAdapter] = {
     "slack": _slack,
     "wordpress": _wordpress,
     "google-places": _google_places,
     "meta": _meta,
     "instagram": _instagram,
+    "linkedin": _linkedin,
 }
 
 _catalog: tuple[ConnectorManifest, ...] = (
@@ -36,13 +39,7 @@ _catalog: tuple[ConnectorManifest, ...] = (
     _google_places.manifest,
     _meta.manifest,
     _instagram.manifest,
-    ConnectorManifest(
-        adapter_id="linkedin",
-        name="LinkedIn",
-        description="Official Posts API publishing for applications with approved access.",
-        availability="access-gated",
-        capabilities=("publish", "analytics"),
-    ),
+    _linkedin.manifest,
     ConnectorManifest(
         adapter_id="whatsapp",
         name="WhatsApp Cloud",

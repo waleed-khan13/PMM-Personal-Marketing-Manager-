@@ -1839,3 +1839,253 @@ def test_instagram_media_validation_and_container_publish_flow(monkeypatch) -> N
             "timeout": 45,
         },
     ]
+
+
+def test_linkedin_connector_publishes_exact_approved_member_revision(client, monkeypatch) -> None:
+    from app.connectors.base import ConnectorTestResult
+    from app.schemas import GeneratedContent
+    from app.services.linkedin import LinkedInPublishResult
+
+    catalog = client.get("/api/connectors").json()["catalog"]
+    manifest = next(item for item in catalog if item["adapterId"] == "linkedin")
+    assert manifest["name"] == "LinkedIn Member"
+    assert manifest["availability"] == "available"
+    assert manifest["capabilities"] == ["publish"]
+    assert manifest["requiredScopes"] == ["openid", "profile", "w_member_social"]
+
+    person_id = "782bbtaQ"
+    access_token = "encrypted-linkedin-oauth-token"
+    created = client.post(
+        "/api/connectors",
+        json={
+            "adapterId": "linkedin",
+            "name": "Founder profile",
+            "config": {"person_id": person_id, "api_version": "202607"},
+            "secrets": {"access_token": access_token},
+            "scopes": ["openid", "profile", "w_member_social"],
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    account = created.json()["account"]
+    assert account["secretStatus"] == {"access_token": True}
+    assert access_token not in created.text
+
+    async def fake_linkedin_test(_self, config, secrets):
+        assert config == {"person_id": person_id, "api_version": "202607"}
+        assert secrets == {"access_token": access_token}
+        return ConnectorTestResult(
+            ok=True,
+            message="Connected to LinkedIn as Waleed Khan.",
+            remote_account_id=person_id,
+            details={"personId": person_id, "name": "Waleed Khan", "apiVersion": "202607"},
+        )
+
+    monkeypatch.setattr(
+        "app.connectors.linkedin.LinkedInMemberAdapter.test_connection",
+        fake_linkedin_test,
+    )
+    tested = client.post(f"/api/connectors/{account['id']}/test")
+    assert tested.status_code == 200
+    assert tested.json()["remoteAccountId"] == person_id
+
+    async def fake_generate(*_args, **_kwargs):
+        return GeneratedContent(
+            title="Approved LinkedIn update",
+            body="This exact reviewed update should reach the connected member profile.",
+            hashtags=["#LocalGrowth", "HumanReviewed"],
+            rationale="Exercises the official LinkedIn Posts publisher.",
+        )
+
+    delivered: list[dict] = []
+
+    async def fake_linkedin_publish(saved_person_id, api_version, saved_token, post):
+        assert saved_person_id == person_id
+        assert api_version == "202607"
+        assert saved_token == access_token
+        delivered.append(post)
+        return LinkedInPublishResult(remote_id="urn:li:share:7190000000000000001")
+
+    monkeypatch.setattr("app.main.generate_content", fake_generate)
+    monkeypatch.setattr(
+        "app.services.publishing.publish_linkedin_member_post",
+        fake_linkedin_publish,
+    )
+    generated = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "LinkedIn launch",
+            "channel": "linkedin",
+            "tone": "Clear",
+            "objective": "Publish the exact approved member update",
+            "notifyTelegram": False,
+        },
+    )
+    assert generated.status_code == 200
+    post = generated.json()["post"]
+    approved = client.post(
+        f"/api/posts/{post['id']}/decision",
+        json={"decision": "approve", "revision": post["revision"]},
+    )
+    assert approved.status_code == 200
+
+    published = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert published.status_code == 200
+    final_post = next(item for item in published.json()["state"]["posts"] if item["id"] == post["id"])
+    assert final_post["status"] == "published"
+    assert final_post["remoteId"] == "urn:li:share:7190000000000000001"
+    assert len(delivered) == 1
+    assert delivered[0]["revision"] == post["revision"]
+    assert delivered[0]["body"] == post["body"]
+    assert delivered[0]["hashtags"] == post["hashtags"]
+
+    duplicate = client.post(
+        f"/api/posts/{post['id']}/publish",
+        json={"revision": post["revision"]},
+    )
+    assert duplicate.status_code == 400
+    assert len(delivered) == 1
+
+    client.put("/api/scheduler", json={"paused": True})
+    scheduled_post = client.post(
+        "/api/posts/generate",
+        json={
+            "topic": "Scheduled LinkedIn update",
+            "channel": "linkedin",
+            "tone": "Clear",
+            "objective": "Verify the LinkedIn scheduler dispatch",
+            "notifyTelegram": False,
+        },
+    ).json()["post"]
+    client.post(
+        f"/api/posts/{scheduled_post['id']}/decision",
+        json={"decision": "approve", "revision": scheduled_post["revision"]},
+    )
+    scheduled = client.post(
+        f"/api/posts/{scheduled_post['id']}/schedule",
+        json={
+            "revision": scheduled_post["revision"],
+            "runAt": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+        },
+    )
+    assert scheduled.status_code == 200
+    client.put("/api/scheduler", json={"paused": False})
+
+    deadline = time.monotonic() + 3
+    scheduled_state = client.get("/api/state").json()
+    while time.monotonic() < deadline:
+        scheduled_state = client.get("/api/state").json()
+        current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+        if current["status"] == "published":
+            break
+        time.sleep(0.05)
+    current = next(item for item in scheduled_state["posts"] if item["id"] == scheduled_post["id"])
+    job = next(item for item in scheduled_state["jobs"] if item["id"] == scheduled.json()["job"]["id"])
+    assert current["status"] == "published"
+    assert current["remoteId"] == "urn:li:share:7190000000000000001"
+    assert job["status"] == "completed"
+    assert len(delivered) == 2
+
+
+def test_linkedin_payload_versioning_and_token_redaction(monkeypatch) -> None:
+    import httpx
+
+    from app.errors import ExternalServiceError
+    from app.services.linkedin import (
+        LinkedInApiResponse,
+        approved_linkedin_commentary,
+        linkedin_api_request,
+        publish_linkedin_member_post,
+        validate_linkedin_api_base_url,
+        validate_linkedin_person_id,
+        validate_linkedin_version,
+    )
+
+    with pytest.raises(ExternalServiceError, match="HTTPS"):
+        validate_linkedin_api_base_url("http://api.example.com")
+    assert validate_linkedin_api_base_url(
+        "http://127.0.0.1:4100/linkedin/"
+    ) == "http://127.0.0.1:4100/linkedin"
+    with pytest.raises(ExternalServiceError, match="YYYYMM"):
+        validate_linkedin_version("latest")
+    assert validate_linkedin_version("202607") == "202607"
+    with pytest.raises(ExternalServiceError, match="unsupported"):
+        validate_linkedin_person_id("member:id")
+
+    assert approved_linkedin_commentary(
+        {"body": "Approved update", "hashtags": ["#LocalGrowth", "Reviewed"]}
+    ) == "Approved update\n\n#LocalGrowth #Reviewed"
+    with pytest.raises(ExternalServiceError, match="3,000"):
+        approved_linkedin_commentary({"body": "x" * 3_001, "hashtags": []})
+
+    leaked_token = "linkedin-token-that-must-not-leak"
+    request_capture: dict = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def request(self, method, endpoint, **kwargs):
+            request_capture.update({"method": method, "endpoint": endpoint, **kwargs})
+            return httpx.Response(
+                401,
+                json={"status": 401, "message": f"Invalid token {leaked_token}"},
+            )
+
+    monkeypatch.setattr("app.services.linkedin.httpx.AsyncClient", FakeAsyncClient)
+    with pytest.raises(ExternalServiceError) as error:
+        asyncio.run(linkedin_api_request("v2/userinfo", leaked_token))
+    assert leaked_token not in str(error.value)
+    assert "[redacted]" in str(error.value)
+    assert leaked_token not in request_capture["endpoint"]
+    assert request_capture["headers"]["Authorization"] == f"Bearer {leaked_token}"
+
+    calls: list[dict] = []
+
+    async def fake_request(resource, access_token, **kwargs):
+        calls.append({"resource": resource, "access_token": access_token, **kwargs})
+        return LinkedInApiResponse(
+            payload={},
+            headers={"x-restli-id": "urn:li:share:7190000000000000002"},
+        )
+
+    monkeypatch.setattr("app.services.linkedin.linkedin_api_request", fake_request)
+    result = asyncio.run(
+        publish_linkedin_member_post(
+            "782bbtaQ",
+            "202607",
+            "secret-linkedin-token",
+            {"body": "Approved update", "hashtags": ["#LocalGrowth", "Reviewed"]},
+        )
+    )
+    assert result.remote_id == "urn:li:share:7190000000000000002"
+    assert calls == [
+        {
+            "resource": "rest/posts",
+            "access_token": "secret-linkedin-token",
+            "method": "POST",
+            "api_version": "202607",
+            "json_body": {
+                "author": "urn:li:person:782bbtaQ",
+                "commentary": "Approved update\n\n#LocalGrowth #Reviewed",
+                "visibility": "PUBLIC",
+                "distribution": {
+                    "feedDistribution": "MAIN_FEED",
+                    "targetEntities": [],
+                    "thirdPartyDistributionChannels": [],
+                },
+                "lifecycleState": "PUBLISHED",
+                "isReshareDisabledByAuthor": False,
+            },
+            "timeout": 45,
+        }
+    ]

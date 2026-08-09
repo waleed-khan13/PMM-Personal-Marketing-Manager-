@@ -33,7 +33,7 @@ async function expectNoAccessibilityViolations(page: Page, testInfo: TestInfo, n
   expect(violations, `${name} has automated WCAG A/AA violations`).toEqual([]);
 }
 
-test("runs real approved WordPress, Facebook, and Instagram publishing workflows", async ({ page }) => {
+test("runs real approved WordPress, Facebook, Instagram, and LinkedIn publishing workflows", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
 
@@ -286,6 +286,94 @@ test("runs real approved WordPress, Facebook, and Instagram publishing workflows
   expect(instagramMockState.lastInstagramContainer.caption).toContain("Show one practical campaign idea");
   expect(instagramMockState.lastInstagramContainer.caption).toContain("#HumanReviewed");
   expect(instagramMockState.lastInstagramPublish).toEqual({ creation_id: "18000000000000010" });
+
+  await navigate(page, "Integrations", "Connections");
+  const linkedinForm = page.getByLabel("LinkedIn Member ID").locator("xpath=ancestor::form");
+  await linkedinForm.getByLabel("Connection name").fill("E2E LinkedIn profile");
+  await linkedinForm.getByLabel("LinkedIn Member ID").fill("782bbtaQ");
+  await linkedinForm.getByLabel("LinkedIn API version").fill("202607");
+  await linkedinForm.getByLabel("OAuth Access Token").fill("e2e-linkedin-access-token");
+  await linkedinForm.getByRole("button", { name: "Save & test" }).click();
+  await expect(page.getByText("Connected to LinkedIn as Waleed Khan.")).toBeVisible();
+
+  await navigate(page, "Create content", "Create a draft");
+  await page.getByLabel("Topic or source brief").fill(
+    "Create one useful professional lesson for my LinkedIn network.",
+  );
+  await page.getByLabel("Channel").click();
+  await page.getByRole("option", { name: "LinkedIn" }).click();
+
+  const linkedinGenerateResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/posts/generate") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Generate review draft" }).click();
+  await expect((await linkedinGenerateResponse).status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: "Approval queue" })).toBeVisible();
+  await page.getByRole("button", { name: /^all / }).click();
+
+  const linkedinTitle = "A reviewed LinkedIn member update";
+  const linkedinCard = page
+    .getByRole("heading", { level: 2, name: linkedinTitle })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  await linkedinCard.getByRole("button", { name: "Approve" }).click();
+  await expect(linkedinCard.getByText("approved", { exact: true })).toBeVisible();
+
+  const linkedinPublishResponse = page.waitForResponse(
+    (response) => /\/api\/posts\/[^/]+\/publish$/.test(response.url()) && response.request().method() === "POST",
+  );
+  await linkedinCard.getByRole("button", { name: "Publish to LinkedIn" }).click();
+  await expect((await linkedinPublishResponse).status()).toBe(200);
+  await expect(linkedinCard.getByText("published", { exact: true })).toBeVisible();
+  await expect(linkedinCard.getByText("remote:urn:li:share:7190000000000000003", { exact: true })).toBeVisible();
+
+  const linkedinStateResponse = await page.request.get("/api/state");
+  const linkedinState = (await linkedinStateResponse.json()) as PublicAppState;
+  expect(linkedinState.posts).toHaveLength(4);
+  expect(linkedinState.posts.find((post) => post.channel === "linkedin")).toMatchObject({
+    remoteId: "urn:li:share:7190000000000000003",
+    revision: 1,
+    status: "published",
+    title: linkedinTitle,
+  });
+
+  const linkedinMockResponse = await page.request.get(`${mockBaseUrl}/__e2e/state`);
+  const linkedinMockState = (await linkedinMockResponse.json()) as {
+    generationRequests: number;
+    lastLinkedInHeaders: {
+      authorization: string;
+      linkedinVersion: string;
+      restliVersion: string;
+    };
+    lastLinkedInPost: {
+      author: string;
+      commentary: string;
+      distribution: { feedDistribution: string };
+      isReshareDisabledByAuthor: boolean;
+      lifecycleState: string;
+      visibility: string;
+    };
+    linkedinAuthChecks: number;
+    linkedinPublishes: number;
+  };
+  expect(linkedinMockState).toMatchObject({
+    generationRequests: 4,
+    linkedinAuthChecks: 1,
+    linkedinPublishes: 1,
+  });
+  expect(linkedinMockState.lastLinkedInHeaders).toEqual({
+    authorization: "Bearer e2e-linkedin-access-token",
+    linkedinVersion: "202607",
+    restliVersion: "2.0.0",
+  });
+  expect(linkedinMockState.lastLinkedInPost).toMatchObject({
+    author: "urn:li:person:782bbtaQ",
+    distribution: { feedDistribution: "MAIN_FEED" },
+    isReshareDisabledByAuthor: false,
+    lifecycleState: "PUBLISHED",
+    visibility: "PUBLIC",
+  });
+  expect(linkedinMockState.lastLinkedInPost.commentary).toContain("Share one practical lesson");
+  expect(linkedinMockState.lastLinkedInPost.commentary).toContain("#HumanReviewed");
 });
 
 test("passes automated accessibility checks in core workflow views", async ({ page }, testInfo) => {

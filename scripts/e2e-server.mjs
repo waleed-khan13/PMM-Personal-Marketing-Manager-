@@ -23,10 +23,14 @@ const mockState = {
   instagramContainers: 0,
   instagramStatusChecks: 0,
   instagramPublishes: 0,
+  linkedinAuthChecks: 0,
+  linkedinPublishes: 0,
   lastPublishedPost: null,
   lastFacebookPost: null,
   lastInstagramContainer: null,
   lastInstagramPublish: null,
+  lastLinkedInPost: null,
+  lastLinkedInHeaders: null,
 };
 
 function sendJson(response, statusCode, payload) {
@@ -69,28 +73,37 @@ const mockServer = createServer(async (request, response) => {
       mockState.generationRequests += 1;
       await readJson(request);
       const facebookDraft = mockState.generationRequests === 2;
-      const instagramDraft = mockState.generationRequests > 2;
+      const instagramDraft = mockState.generationRequests === 3;
+      const linkedinDraft = mockState.generationRequests > 3;
       sendJson(response, 200, {
         choices: [
           {
             message: {
               content: JSON.stringify({
-                title: instagramDraft
+                title: linkedinDraft
+                  ? "A reviewed LinkedIn member update"
+                  : instagramDraft
                   ? "A reviewed Instagram image update"
                   : facebookDraft
                     ? "A useful Facebook Page update"
                     : "A practical local growth checklist",
-                body: instagramDraft
+                body: linkedinDraft
+                  ? "Share one practical lesson, make the professional value clear, and keep the published text human-reviewed."
+                  : instagramDraft
                   ? "Show one practical campaign idea, keep the caption useful, and publish the exact reviewed image."
                   : facebookDraft
                   ? "Share one useful local insight, invite a relevant response, and keep the final post human-reviewed."
                   : "Start with one clear customer problem, publish a useful answer, and review the result before the next post.",
-                hashtags: instagramDraft
+                hashtags: linkedinDraft
+                  ? ["#ProfessionalGrowth", "#HumanReviewed"]
+                  : instagramDraft
                   ? ["#InstagramForBusiness", "#HumanReviewed"]
                   : facebookDraft
                     ? ["#LocalBusiness", "#FacebookMarketing"]
                     : ["#LocalGrowth", "#SmallBusiness"],
-                rationale: instagramDraft
+                rationale: linkedinDraft
+                  ? "A concise public text post exercises the official LinkedIn Posts API member flow."
+                  : instagramDraft
                   ? "A public image URL and exact approved caption exercise Instagram's container workflow."
                   : facebookDraft
                   ? "A concise, reviewed update is appropriate for the connected Facebook Page."
@@ -213,6 +226,51 @@ const mockServer = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/linkedin/v2/userinfo") {
+      mockState.linkedinAuthChecks += 1;
+      if (request.headers.authorization !== "Bearer e2e-linkedin-access-token") {
+        sendJson(response, 401, { status: 401, message: "Invalid OAuth access token." });
+        return;
+      }
+      sendJson(response, 200, {
+        sub: "782bbtaQ",
+        name: "Waleed Khan",
+        given_name: "Waleed",
+        family_name: "Khan",
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/linkedin/rest/posts") {
+      mockState.linkedinPublishes += 1;
+      mockState.lastLinkedInHeaders = {
+        authorization: request.headers.authorization,
+        linkedinVersion: request.headers["linkedin-version"],
+        restliVersion: request.headers["x-restli-protocol-version"],
+      };
+      if (request.headers.authorization !== "Bearer e2e-linkedin-access-token") {
+        sendJson(response, 401, { status: 401, message: "Invalid OAuth access token." });
+        return;
+      }
+      if (request.headers["linkedin-version"] !== "202607") {
+        sendJson(response, 400, { status: 400, message: "Missing LinkedIn version." });
+        return;
+      }
+      if (request.headers["x-restli-protocol-version"] !== "2.0.0") {
+        sendJson(response, 400, { status: 400, message: "Missing Rest.li version." });
+        return;
+      }
+      mockState.lastLinkedInPost = await readJson(request);
+      response.writeHead(201, {
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "x-restli-id": "urn:li:share:7190000000000000003",
+      });
+      response.end("{}");
+      return;
+    }
+
     sendJson(response, 404, { message: `Unhandled E2E route: ${request.method} ${url.pathname}` });
   } catch (error) {
     sendJson(response, 500, {
@@ -293,6 +351,7 @@ launch(
     LOCALGROWTH_SLACK_SOCKET_MODE: "0",
     LOCALGROWTH_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
     LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,
+    LOCALGROWTH_LINKEDIN_API_BASE_URL: `http://127.0.0.1:${mockPort}/linkedin`,
   },
 );
 

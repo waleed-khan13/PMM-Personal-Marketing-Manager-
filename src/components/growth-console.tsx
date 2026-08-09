@@ -45,6 +45,10 @@ import {
   type InstagramConnectorForm,
 } from "@/components/instagram-connector-card";
 import {
+  LinkedInConnectorCard,
+  type LinkedInConnectorForm,
+} from "@/components/linkedin-connector-card";
+import {
   MetaConnectorCard,
   type MetaConnectorForm,
 } from "@/components/meta-connector-card";
@@ -587,6 +591,13 @@ export function GrowthConsole() {
     accessToken: "",
     enabled: true,
   });
+  const [linkedinForm, setLinkedinForm] = useState<LinkedInConnectorForm>({
+    name: "My LinkedIn profile",
+    personId: "",
+    apiVersion: "202607",
+    accessToken: "",
+    enabled: true,
+  });
   const [deleteConnector, setDeleteConnector] = useState<ConnectorAccount | null>(null);
   const [generateForm, setGenerateForm] = useState<{
     topic: string;
@@ -673,6 +684,16 @@ export function GrowthConsole() {
             enabled: instagram.enabled,
           });
         }
+        const linkedin = next.connectors.accounts.find((account) => account.adapterId === "linkedin");
+        if (linkedin) {
+          setLinkedinForm({
+            name: linkedin.name,
+            personId: String(linkedin.config.person_id ?? ""),
+            apiVersion: String(linkedin.config.api_version ?? "202607"),
+            accessToken: "",
+            enabled: linkedin.enabled,
+          });
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -744,8 +765,13 @@ export function GrowthConsole() {
     [appState?.connectors.accounts],
   );
 
+  const linkedinAccount = useMemo(
+    () => appState?.connectors.accounts.find((account) => account.adapterId === "linkedin") ?? null,
+    [appState?.connectors.accounts],
+  );
+
   const upcomingConnectors = useMemo(
-    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram"].includes(connector.adapterId)) ?? [],
+    () => appState?.connectors.catalog.filter((connector) => !["telegram", "slack", "wordpress", "google-places", "meta", "instagram", "linkedin"].includes(connector.adapterId)) ?? [],
     [appState?.connectors.catalog],
   );
 
@@ -1275,6 +1301,58 @@ export function GrowthConsole() {
     }
   }
 
+  async function saveLinkedInConnector(event?: FormEvent, quiet = false) {
+    event?.preventDefault();
+    setBusy("linkedin-save");
+    try {
+      const secrets: Record<string, string> = {};
+      if (linkedinForm.accessToken.trim()) {
+        secrets.access_token = linkedinForm.accessToken.trim();
+      }
+      const response = await requestJson<StateResponse & { account: ConnectorAccount }>(
+        linkedinAccount ? `/api/connectors/${linkedinAccount.id}` : "/api/connectors",
+        {
+          method: linkedinAccount ? "PUT" : "POST",
+          body: JSON.stringify({
+            adapterId: "linkedin",
+            name: linkedinForm.name,
+            config: { person_id: linkedinForm.personId, api_version: linkedinForm.apiVersion },
+            secrets,
+            scopes: ["openid", "profile", "w_member_social"],
+            enabled: linkedinForm.enabled,
+          }),
+        },
+      );
+      setAppState(response.state);
+      setLinkedinForm((current) => ({ ...current, accessToken: "" }));
+      if (!quiet) toast.success("LinkedIn connector saved in the encrypted local vault");
+      return response.account.id;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the LinkedIn connector.");
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function testLinkedInConnection() {
+    const accountId = await saveLinkedInConnector(undefined, true);
+    if (!accountId) return;
+    setBusy("linkedin-test");
+    try {
+      const response = await requestJson<StateResponse & { message: string }>(`/api/connectors/${accountId}/test`, {
+        method: "POST",
+      });
+      setAppState(response.state);
+      toast.success(response.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "LinkedIn connection test failed.");
+      await loadState();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function removeConnector() {
     if (!deleteConnector) return;
     const adapterId = deleteConnector.adapterId;
@@ -1312,6 +1390,14 @@ export function GrowthConsole() {
           name: "Company Instagram",
           userId: "",
           apiVersion: "v25.0",
+          accessToken: "",
+          enabled: true,
+        });
+      } else if (adapterId === "linkedin") {
+        setLinkedinForm({
+          name: "My LinkedIn profile",
+          personId: "",
+          apiVersion: "202607",
           accessToken: "",
           enabled: true,
         });
@@ -1655,7 +1741,8 @@ export function GrowthConsole() {
                     const publisherReady = post.channel === "telegram"
                       || (post.channel === "blog" && wordpressAccount?.status === "verified" && wordpressAccount.enabled)
                       || (post.channel === "facebook" && metaAccount?.status === "verified" && metaAccount.enabled)
-                      || (post.channel === "instagram" && Boolean(post.mediaUrl) && instagramAccount?.status === "verified" && instagramAccount.enabled);
+                      || (post.channel === "instagram" && Boolean(post.mediaUrl) && instagramAccount?.status === "verified" && instagramAccount.enabled)
+                      || (post.channel === "linkedin" && linkedinAccount?.status === "verified" && linkedinAccount.enabled);
                     return (
                     <Card className="min-w-0" key={post.id}>
                       <CardHeader className="border-b border-zinc-900">
@@ -1714,7 +1801,7 @@ export function GrowthConsole() {
                             {post.status === "approved" && publisherReady ? (
                               <>
                                 <Button disabled={Boolean(scheduledJob)} onClick={() => openSchedule(post)} size="sm" variant="outline"><Clock3 /> {scheduledJob ? "Scheduled" : "Schedule"}</Button>
-                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : post.channel === "instagram" ? "Publish to Instagram" : "Publish now"}</Button>
+                                <Button disabled={busy === `publish-${post.id}` || Boolean(scheduledJob)} onClick={() => void publishPost(post)} size="sm">{busy === `publish-${post.id}` ? <Loader2 className="animate-spin" /> : <Send />} {post.channel === "blog" ? "Publish to WordPress" : post.channel === "facebook" ? "Publish to Facebook" : post.channel === "instagram" ? "Publish to Instagram" : post.channel === "linkedin" ? "Publish to LinkedIn" : "Publish now"}</Button>
                               </>
                             ) : null}
                             {post.status === "approved" && post.channel === "blog" && !publisherReady ? (
@@ -1729,7 +1816,10 @@ export function GrowthConsole() {
                             {post.status === "approved" && post.channel === "instagram" && !publisherReady && Boolean(post.mediaUrl) ? (
                               <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect Instagram</Button>
                             ) : null}
-                            {post.status === "approved" && !["telegram", "blog", "facebook", "instagram"].includes(post.channel) ? (
+                            {post.status === "approved" && post.channel === "linkedin" && !publisherReady ? (
+                              <Button onClick={() => navigate("integrations")} size="sm" variant="outline"><PlugZap /> Connect LinkedIn</Button>
+                            ) : null}
+                            {post.status === "approved" && !["telegram", "blog", "facebook", "instagram", "linkedin"].includes(post.channel) ? (
                               <span className="rounded-md border border-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-600">Publisher not installed</span>
                             ) : null}
                             {post.status === "publishing" ? (
@@ -2019,6 +2109,16 @@ export function GrowthConsole() {
                 onRemove={() => instagramAccount && setDeleteConnector(instagramAccount)}
                 onSave={(event) => void saveInstagramConnector(event)}
                 onTest={() => void testInstagramConnection()}
+              />
+
+              <LinkedInConnectorCard
+                account={linkedinAccount}
+                busy={busy}
+                form={linkedinForm}
+                onChange={(patch) => setLinkedinForm((current) => ({ ...current, ...patch }))}
+                onRemove={() => linkedinAccount && setDeleteConnector(linkedinAccount)}
+                onSave={(event) => void saveLinkedInConnector(event)}
+                onTest={() => void testLinkedInConnection()}
               />
 
               <div>
