@@ -47,7 +47,9 @@ A v1 release candidate is acceptable only when all of the following pass from a 
 ## Release sequence
 
 1. Run the complete acceptance suite and inspect generated browser artifacts.
-2. Create a `vX.Y.Z` tag whose root, CLI, backend, and portable-runtime versions match.
-3. Let the native release workflow build and smoke-test every supported OS/CPU bundle on its own runner.
-4. Publish the archives, SHA-256 files, update manifest, and `localgrowth-os` npm CLI from that tag.
+2. Run the native workflow manually against `main` with `publish` disabled; every supported OS/CPU bundle must pass on its native runner.
+3. Create a `vX.Y.Z` tag whose root, CLI, backend, and portable-runtime versions match.
+4. Let the tag-triggered workflow rebuild the native assets and publish the archives, SHA-256 files, update manifest, and `localgrowth-os` npm CLI.
 5. Track Labs graduation and signed desktop packaging in [ROADMAP.md](ROADMAP.md) rather than expanding the v1 contract after tagging.
+
+The exact maintainer procedure and first npm publication prerequisite are documented in [RELEASING.md](RELEASING.md).

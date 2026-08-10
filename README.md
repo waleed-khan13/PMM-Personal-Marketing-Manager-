@@ -6,7 +6,7 @@ LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted s
 
 The default v1.0 product surface focuses on one complete workflow: connect an AI model, create channel-aware drafts, obtain human approval, and publish or schedule the exact approved revision. Lead intelligence and Local SEO remain in the repository as opt-in previews so they can mature through later updates without weakening the first stable release. Set `LOCALGROWTH_ENABLE_LABS=1` before launch to show those preview workspaces.
 
-See [docs/V1_RELEASE.md](docs/V1_RELEASE.md) for the release contract, supported destinations, limitations, and acceptance checklist.
+See [docs/V1_RELEASE.md](docs/V1_RELEASE.md) for the release contract and [docs/RELEASING.md](docs/RELEASING.md) for the maintainer dry-run, tagging, and publication procedure.
 
 ## What works today
 

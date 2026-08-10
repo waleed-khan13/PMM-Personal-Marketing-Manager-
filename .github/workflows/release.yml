@@ -6,16 +6,23 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing v-prefixed git tag to release
+      ref:
+        description: Branch, commit, or v-prefixed tag to build
         required: true
+        default: main
         type: string
+      publish:
+        description: Publish GitHub and npm releases (ref must be a version tag)
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || (inputs.publish && inputs.ref || '') }}
 
 jobs:
   validate:
@@ -24,7 +31,7 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.RELEASE_REF }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -62,7 +69,7 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.RELEASE_REF }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -114,6 +121,7 @@ jobs:
 
   github-release:
     needs: build
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -121,7 +129,7 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.RELEASE_REF }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -153,6 +161,7 @@ jobs:
 
   npm-publish:
     needs: github-release
+    if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -161,7 +170,7 @@ jobs:
       - name: Check out the release tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ env.RELEASE_REF }}
 
       - name: Install Node.js for npm publishing
         uses: actions/setup-node@v6
