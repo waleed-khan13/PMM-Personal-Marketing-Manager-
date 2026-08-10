@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,7 +35,8 @@ def configure_sqlite(dbapi_connection, _connection_record) -> None:  # type: ign
 
 
 def run_migrations() -> None:
-    backend_root = Path(__file__).resolve().parents[1]
+    bundled_root = getattr(sys, "_MEIPASS", None)
+    backend_root = Path(bundled_root) if bundled_root else Path(__file__).resolve().parents[1]
     alembic_config = Config(str(backend_root / "alembic.ini"))
     alembic_config.set_main_option("script_location", str(backend_root / "alembic"))
     alembic_config.set_main_option("sqlalchemy.url", settings.database_url)

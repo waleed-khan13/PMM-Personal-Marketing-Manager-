@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync and audit the portable web runtime
+        run: |
+          pnpm runtime:sync
+          npm audit --omit=dev --audit-level=high --prefix packaging/web-runtime
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify release version metadata
+        run: pnpm release:verify
+
+      - name: Run the complete acceptance suite
+        run: pnpm check
+
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-diagnostics
+          path: output/playwright
+          if-no-files-found: ignore
+          retention-days: 7

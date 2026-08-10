@@ -1,0 +1,46 @@
+{
+  "name": "localgrowth-os",
+  "version": "1.0.0",
+  "description": "Cross-platform installer and local runtime manager for LocalGrowth OS.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-#readme",
+  "bugs": {
+    "url": "https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-/issues"
+  },
+  "keywords": [
+    "ai-automation",
+    "localhost",
+    "social-media",
+    "marketing",
+    "open-source"
+  ],
+  "type": "module",
+  "bin": {
+    "localgrowth": "./bin/localgrowth.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "bundle": "node scripts/build-bundle.mjs",
+    "localgrowth": "node bin/localgrowth.mjs",
+    "manifest": "node scripts/assemble-manifest.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "tar": "^7.4.3"
+  }
+}

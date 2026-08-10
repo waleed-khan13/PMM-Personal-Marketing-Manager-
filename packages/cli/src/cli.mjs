@@ -1,0 +1,140 @@
+import {
+  CLI_VERSION,
+  DEFAULT_API_PORT,
+  DEFAULT_MANIFEST_URL,
+  DEFAULT_WEB_PORT,
+} from "./constants.mjs";
+import { diagnose } from "./doctor.mjs";
+import { installRelease } from "./installation.mjs";
+import { localgrowthPaths } from "./paths.mjs";
+import { startRuntime } from "./runtime.mjs";
+import { uninstall } from "./uninstall.mjs";
+
+const helpText = `LocalGrowth OS ${CLI_VERSION}
+
+Usage:
+  localgrowth onboard [--manifest URL] [--install-only] [--no-open]
+  localgrowth start [--port 3000] [--api-port 8000] [--no-open] [--labs]
+  localgrowth update [--manifest URL] [--force]
+  localgrowth doctor [--json]
+  localgrowth uninstall --yes [--purge-data]
+  localgrowth version
+
+Environment:
+  LOCALGROWTH_HOME                 Override the application data/runtime root.
+  LOCALGROWTH_RELEASE_MANIFEST     Override the official release manifest URL.
+`;
+
+function parseArguments(argv) {
+  const command = argv[0] || "help";
+  const values = new Map();
+  const flags = new Set();
+  for (let index = command === "help" ? 0 : 1; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (!value.startsWith("--")) throw new Error(`Unexpected argument: ${value}`);
+    if (["--manifest", "--port", "--api-port"].includes(value)) {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("--")) throw new Error(`${value} requires a value.`);
+      values.set(value, next);
+      index += 1;
+    } else {
+      flags.add(value);
+    }
+  }
+  return { command, flags, values };
+}
+
+function parsePort(value, fallback, name) {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) throw new Error(`${name} must be 1-65535.`);
+  return parsed;
+}
+
+function manifestSource(arguments_) {
+  return (
+    arguments_.values.get("--manifest") || process.env.LOCALGROWTH_RELEASE_MANIFEST || DEFAULT_MANIFEST_URL
+  );
+}
+
+function printDoctor(result, log) {
+  log(`LocalGrowth home: ${result.root}`);
+  for (const check of result.checks) log(`${check.ok ? "PASS" : check.advisory ? "INFO" : "FAIL"}  ${check.name}: ${check.detail}`);
+  log(result.ok ? "Doctor completed successfully." : "Doctor found blocking problems.");
+}
+
+export async function main(argv, { log = console.log, error = console.error } = {}) {
+  try {
+    const arguments_ = parseArguments(argv);
+    const paths = localgrowthPaths();
+    const webPort = parsePort(arguments_.values.get("--port"), DEFAULT_WEB_PORT, "--port");
+    const apiPort = parsePort(arguments_.values.get("--api-port"), DEFAULT_API_PORT, "--api-port");
+
+    if (["help", "--help", "-h"].includes(arguments_.command)) {
+      log(helpText);
+      return 0;
+    }
+    if (["version", "--version", "-v"].includes(arguments_.command)) {
+      log(CLI_VERSION);
+      return 0;
+    }
+    if (arguments_.command === "doctor") {
+      const result = await diagnose({ paths, webPort, apiPort });
+      if (arguments_.flags.has("--json")) log(JSON.stringify(result, null, 2));
+      else printDoctor(result, log);
+      return result.ok ? 0 : 1;
+    }
+    if (arguments_.command === "uninstall") {
+      const result = await uninstall({
+        paths,
+        confirmed: arguments_.flags.has("--yes"),
+        purgeData: arguments_.flags.has("--purge-data"),
+      });
+      log(result.preservedData ? `Runtime removed. Local data was preserved at ${result.dataDirectory}` : "Runtime and local data removed.");
+      return 0;
+    }
+    if (arguments_.command === "update") {
+      await installRelease({
+        manifestSource: manifestSource(arguments_),
+        paths,
+        force: arguments_.flags.has("--force"),
+        log,
+      });
+      return 0;
+    }
+    if (arguments_.command === "onboard") {
+      await installRelease({
+        manifestSource: manifestSource(arguments_),
+        paths,
+        force: arguments_.flags.has("--force"),
+        log,
+      });
+      if (arguments_.flags.has("--install-only")) return 0;
+      const result = await startRuntime({
+        paths,
+        webPort,
+        apiPort,
+        shouldOpenBrowser: !arguments_.flags.has("--no-open"),
+        labsEnabled: arguments_.flags.has("--labs"),
+        log,
+      });
+      return result.exitCode ?? 0;
+    }
+    if (["start", "run"].includes(arguments_.command)) {
+      const result = await startRuntime({
+        paths,
+        webPort,
+        apiPort,
+        shouldOpenBrowser: !arguments_.flags.has("--no-open"),
+        labsEnabled: arguments_.flags.has("--labs"),
+        log,
+      });
+      return result.exitCode ?? 0;
+    }
+
+    throw new Error(`Unknown command: ${arguments_.command}\n\n${helpText}`);
+  } catch (caught) {
+    error(caught instanceof Error ? caught.message : String(caught));
+    return 1;
+  }
+}

@@ -25,6 +25,7 @@ packages = ["app"]
 
 [dependency-groups]
 dev = [
+  "pyinstaller>=6.15,<7",
   "pytest>=8.4,<10",
   "ruff>=0.12,<1",
 ]

@@ -11,12 +11,17 @@ All notable user-facing changes are documented here.
 - Telegram and Slack approval decisions plus WhatsApp approved-template review notifications.
 - Durable SQLite queues for scheduled publishing and AI image generation, including restart recovery, progress, cancellation, and retry.
 - Opt-in Labs flag for the retained Lead intelligence and Local SEO preview workspaces.
+- `npx localgrowth-os onboard` installer and lifecycle CLI for checksummed Windows, macOS, and Linux native bundles.
+- Standalone FastAPI runtime with embedded migrations and a portable Next.js production runtime; end users need only Node.js 20.9+.
+- Tag-driven CI release automation for per-platform builds, native smoke tests, SHA-256 assets, the update manifest, and npm publication.
 
 ### Changed
 
 - Default navigation now exposes only the v1 social publishing product surface.
 - Runtime identity and documentation now describe the `social-v1` edition and its explicit limitations.
+- Docker is now an optional advanced path rather than a prerequisite for the primary localhost installation.
 
 ### Security and privacy
 
 - Local services bind to loopback by default, application data stays in the operator-controlled data directory, and saved connector secrets remain encrypted at rest.
+- Native installers reject insecure remote manifests and archives with mismatched SHA-256 checksums; production web dependencies pass the high-severity audit gate.

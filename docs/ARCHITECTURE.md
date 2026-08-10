@@ -157,17 +157,8 @@ class LeadSource(Protocol):
 
 ## Installation target
 
-The stable release must support both:
+The primary stable installation is `npx localgrowth-os onboard`. The small npm CLI resolves the current OS/CPU target from the published release manifest, requires HTTPS, verifies SHA-256 before extraction, validates bundle metadata, and atomically records the active immutable runtime. FastAPI is shipped as a native executable with migrations embedded; Next.js is shipped as a standalone server with flattened production dependencies. Python, uv, pnpm, Docker, and a source checkout are therefore not end-user prerequisites.
 
-```bash
-pnpm install
-pnpm dev
-```
+Mutable state is never placed inside the versioned runtime. SQLite, `master.key`, media, exports, logs, downloads, and the installation record live under the native application-data root documented in [INSTALLATION.md](INSTALLATION.md). `localgrowth update` can replace runtime files without touching business data, while normal uninstall removes runtimes and preserves data unless the operator explicitly adds `--purge-data`.
 
-and:
-
-```bash
-docker compose up --build
-```
-
-Both modes open only `http://127.0.0.1:3000`. The application continues working offline for local data, drafts, approvals in the dashboard, and Ollama; provider-backed features naturally require their provider connection.
+Source development (`pnpm install`, `pnpm backend:sync`, `pnpm dev`) and Docker Compose remain supported secondary paths. Every mode opens only `http://127.0.0.1:3000`. The application continues working offline for local data, drafts, dashboard approvals, and Ollama; provider-backed features naturally require their provider connection.

@@ -1,5 +1,5 @@
 # dependencies
-/node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 
@@ -9,6 +9,7 @@
 
 # production
 /build
+/release/
 
 # local data and secrets
 .env
@@ -29,6 +30,8 @@
 # Python backend
 /backend/.venv/
 /backend/.pytest_cache/
+/backend/build/
+/backend/dist/
 **/__pycache__/
 *.py[cod]
 

@@ -50,9 +50,23 @@ See [docs/V1_RELEASE.md](docs/V1_RELEASE.md) for the release contract, supported
 
 Publishing adapters for X; Instagram carousel/Reels processing; outreach delivery connectors; rendered-page crawling; Lighthouse/PageSpeed and Search Console adapters; keyword maps; and approved SEO fix proposals remain roadmap work. Channel names can already be used to generate social drafts, while verified Telegram, WordPress, Facebook Page, Instagram Professional, LinkedIn Member, and access-approved LinkedIn Company Page connections can publish or schedule exact approved revisions. Outreach is deliberately export-only and never pretends an email was sent.
 
-## Native localhost run
+## One-command localhost install
 
 Requirements:
+
+- Node.js 20.9+
+
+Windows, macOS, and Linux users do not need Docker, Python, uv, pnpm, or a source checkout:
+
+```bash
+npx localgrowth-os onboard
+```
+
+The command downloads the bundle for the current operating system and CPU, verifies its published SHA-256 checksum, keeps the runtime separate from business data, starts both services on loopback, and opens [http://127.0.0.1:3000](http://127.0.0.1:3000). Updates and normal uninstalls preserve the SQLite database, encryption key, media, and exports. See [docs/INSTALLATION.md](docs/INSTALLATION.md) for paths, lifecycle commands, troubleshooting, and permanent removal.
+
+## Run from source
+
+Contributor requirements:
 
 - Node.js 20.9+
 - pnpm 10+
@@ -117,7 +131,7 @@ The native launcher waits for FastAPI migrations and health checks before starti
 
 Back up the complete data directory together. `localgrowth.db` needs its matching `master.key` to decrypt connector secrets. If `localgrowth.json` from v0.2 exists when SQLite is first created, its settings, posts, audit events, and encrypted secrets are imported automatically while the JSON file remains untouched.
 
-## Docker localhost run
+## Optional Docker localhost run
 
 ```bash
 docker compose up --build

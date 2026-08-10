@@ -14,7 +14,7 @@ The first stable release is intentionally social-first. The default navigation c
 - [x] Structured content generation with revision-bound approval.
 - [x] Telegram notifications and Telegram publishing.
 - [x] Encrypted connector secrets and local persistence.
-- [x] Native Node and loopback-only Docker packaging.
+- [x] Checksummed one-command native installation plus loopback-only source and Docker packaging.
 - [x] Automated Playwright UI, WCAG A/AA, mobile keyboard, and real localhost workflow tests.
 
 ## Milestone 1 — local application core (complete)
@@ -72,5 +72,6 @@ The first stable release is intentionally social-first. The default navigation c
 - [ ] Signed local plugin packages and compatibility metadata.
 - [ ] Workflow recipe gallery and portable workspace bundles.
 - [ ] Backup/restore, diagnostics, upgrade migrations, and security hardening.
-- [ ] Cross-platform installers and background-service integration.
-- [ ] Contributor documentation, connector test harness, and release automation.
+- [x] Cross-platform CLI installer, isolated upgrades, data-preserving uninstall, diagnostics, and native release automation.
+- [ ] Signed desktop installers and background-service integration.
+- [ ] Contributor documentation and connector test harness.

@@ -1,0 +1,182 @@
+name: Native release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing v-prefixed git tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Match package versions to the tag
+        run: pnpm release:verify
+
+  build:
+    needs: validate
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            target: win32-x64
+          - runner: windows-11-arm
+            target: win32-arm64
+          - runner: macos-15-intel
+            target: darwin-x64
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync and audit the portable web runtime
+        run: |
+          pnpm runtime:sync
+          npm audit --omit=dev --audit-level=high --prefix packaging/web-runtime
+
+      - name: Build the web console
+        run: pnpm build
+
+      - name: Build and smoke-test the native API
+        run: |
+          pnpm backend:bundle
+          pnpm backend:bundle:smoke
+
+      - name: Build and smoke-test the installed application
+        env:
+          LOCALGROWTH_RELEASE_TARGET: ${{ matrix.target }}
+        run: |
+          pnpm release:bundle -- --target ${{ matrix.target }}
+          pnpm release:bundle:smoke
+
+      - name: Upload the native release asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: localgrowth-release-${{ matrix.target }}
+          path: |
+            release/localgrowth-os-*-${{ matrix.target }}.tar.gz
+            release/localgrowth-os-*-${{ matrix.target }}.tar.gz.sha256
+            release/localgrowth-asset-${{ matrix.target }}.json
+          if-no-files-found: error
+          compression-level: 0
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Download native assets
+        uses: actions/download-artifact@v7
+        with:
+          pattern: localgrowth-release-*
+          path: release
+          merge-multiple: true
+
+      - name: Assemble the checksummed release manifest
+        run: pnpm --filter localgrowth-os manifest release
+
+      - name: Create or refresh the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/localgrowth-os-*.tar.gz release/localgrowth-os-*.sha256 release/localgrowth-manifest.json --clobber
+          else
+            gh release create "$RELEASE_TAG" release/localgrowth-os-*.tar.gz release/localgrowth-os-*.sha256 release/localgrowth-manifest.json --verify-tag --generate-notes --title "LocalGrowth OS ${RELEASE_TAG#v}"
+          fi
+
+  npm-publish:
+    needs: github-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install Node.js for npm publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish the one-command installer
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if npm view "localgrowth-os@$VERSION" version >/dev/null 2>&1; then
+            echo "localgrowth-os@$VERSION is already published."
+          else
+            npm publish --access public --provenance
+          fi

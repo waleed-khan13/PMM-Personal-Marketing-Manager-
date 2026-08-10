@@ -1,0 +1,130 @@
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { access, chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import * as tar from "tar";
+
+import { backendFileName, releaseTarget, supportedReleaseTargets } from "../src/platform.mjs";
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectRoot = path.resolve(packageRoot, "../..");
+const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+
+function argument(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function sha256(filePath) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+const target = argument("--target") || process.env.LOCALGROWTH_RELEASE_TARGET || releaseTarget();
+if (!supportedReleaseTargets().includes(target)) throw new Error(`Unsupported release target: ${target}`);
+
+const version = packageJson.version;
+const platform = target.split("-")[0];
+const executableName = backendFileName(platform);
+const backendBinary = path.resolve(
+  process.env.LOCALGROWTH_API_BINARY || path.join(projectRoot, "backend", "dist", executableName),
+);
+const standaloneRoot = path.join(projectRoot, ".next", "standalone");
+const portableModulesRoot = path.join(projectRoot, "packaging", "web-runtime", "node_modules");
+const outputRoot = path.join(projectRoot, "release");
+const stagingRoot = path.join(outputRoot, "staging", target);
+const runtimeRoot = path.join(stagingRoot, "runtime");
+const archiveName = `localgrowth-os-${version}-${target}.tar.gz`;
+const archivePath = path.join(outputRoot, archiveName);
+
+if (!(await exists(path.join(standaloneRoot, "server.js")))) {
+  throw new Error("Next.js standalone output is missing. Run `pnpm build` first.");
+}
+if (!(await exists(path.join(portableModulesRoot, "next", "package.json")))) {
+  throw new Error("Portable web dependencies are missing. Run `pnpm runtime:sync` first.");
+}
+if (!(await exists(backendBinary))) {
+  throw new Error(`Bundled FastAPI executable is missing: ${backendBinary}. Run \`pnpm backend:bundle\` first.`);
+}
+
+await rm(stagingRoot, { recursive: true, force: true });
+await mkdir(path.join(runtimeRoot, "backend"), { recursive: true });
+const standaloneModulesRoot = path.join(standaloneRoot, "node_modules");
+await cp(standaloneRoot, path.join(runtimeRoot, "web"), {
+  recursive: true,
+  filter(source) {
+    return source !== standaloneModulesRoot && !source.startsWith(`${standaloneModulesRoot}${path.sep}`);
+  },
+});
+await cp(portableModulesRoot, path.join(runtimeRoot, "web", "node_modules"), {
+  recursive: true,
+  dereference: true,
+});
+await cp(path.join(projectRoot, ".next", "static"), path.join(runtimeRoot, "web", ".next", "static"), {
+  recursive: true,
+});
+if (await exists(path.join(projectRoot, "public"))) {
+  await cp(path.join(projectRoot, "public"), path.join(runtimeRoot, "web", "public"), { recursive: true });
+}
+await cp(backendBinary, path.join(runtimeRoot, "backend", executableName));
+if (platform !== "win32") await chmod(path.join(runtimeRoot, "backend", executableName), 0o755);
+await writeFile(
+  path.join(runtimeRoot, "bundle.json"),
+  `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      product: "localgrowth-os",
+      version,
+      target,
+      createdAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  )}\n`,
+  "utf8",
+);
+
+await mkdir(outputRoot, { recursive: true });
+await rm(archivePath, { force: true });
+await tar.c(
+  {
+    cwd: runtimeRoot,
+    file: archivePath,
+    gzip: true,
+    portable: true,
+    noMtime: true,
+  },
+  ["bundle.json", "backend", "web"],
+);
+
+const archiveChecksum = await sha256(archivePath);
+await writeFile(
+  path.join(outputRoot, `${archiveName}.sha256`),
+  `${archiveChecksum}  ${archiveName}\n`,
+  "utf8",
+);
+const fragment = {
+  target,
+  version,
+  file: archiveName,
+  sha256: archiveChecksum,
+};
+await writeFile(
+  path.join(outputRoot, `localgrowth-asset-${target}.json`),
+  `${JSON.stringify(fragment, null, 2)}\n`,
+  "utf8",
+);
+console.log(`Built ${archivePath}`);
+console.log(`SHA-256 ${archiveChecksum}`);

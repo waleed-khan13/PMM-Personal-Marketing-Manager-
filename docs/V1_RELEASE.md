@@ -11,7 +11,7 @@ Version 1.0 is the stable, localhost-only social publishing edition. Its promise
 - Immediate and scheduled publishing for Telegram, WordPress, Facebook Pages, Instagram Professional single images, LinkedIn Members, and access-approved LinkedIn Company Pages.
 - Revision invalidation, idempotent publishing, retries, restart recovery, and a local audit trail.
 - WhatsApp Cloud approved-template review notifications. Approval still happens in the dashboard, Telegram, or Slack.
-- Native Node/uv launch and loopback-only Docker Compose packaging.
+- Checksummed one-command native installation on Windows, macOS, and Linux; source and Docker Compose runs remain available for contributors and advanced operators.
 
 ## Explicit v1 limitations
 
@@ -21,7 +21,7 @@ Version 1.0 is the stable, localhost-only social publishing edition. Its promise
 - WhatsApp interactive approvals are not included because Meta requires a reachable public HTTPS webhook.
 - LinkedIn Company publishing depends on LinkedIn product approval, scopes, and Page permissions that LocalGrowth cannot grant.
 - The computer and application must remain running for local listeners and scheduled work.
-- Cross-platform installers, automatic backup/restore, normalized engagement analytics, and signed plugins remain roadmap work.
+- Signed desktop packages, background-service integration, automatic backup/restore, normalized engagement analytics, and signed plugins remain roadmap work.
 
 ## Labs boundary
 
@@ -37,16 +37,17 @@ Labs never enable an HTML scraper for LinkedIn or Google Maps. Discovery uses pe
 
 A v1 release candidate is acceptable only when all of the following pass from a clean install:
 
-1. `pnpm install` and `pnpm backend:sync` complete with the documented runtimes.
+1. The npm CLI downloads the correct platform bundle, rejects a bad checksum, installs into an empty application-data root, and preserves the separate data directory across updates.
 2. `pnpm check` passes type checking, linting, backend tests, browser workflows, accessibility checks, and the production build.
 3. The default navigation does not expose Labs modules.
 4. The API reports edition `social-v1`, Labs disabled, version `1.0.0`, loopback mode, and SQLite persistence.
 5. The real localhost browser workflow proves generation, edit invalidation, approval, immediate publishing, scheduling, media handling, and durable image generation against deterministic provider stand-ins.
-6. Native and Docker launchers expose only the console on loopback and retain the data directory across restart.
+6. The installed native runtime boots its bundled FastAPI executable, applies SQLite migrations, serves the Next.js console through loopback, and passes `/api/health`; the optional Docker launcher preserves the same network boundary.
 
 ## Release sequence
 
 1. Run the complete acceptance suite and inspect generated browser artifacts.
-2. Create the source release from a clean tagged commit.
-3. Publish checksums and concise installation notes with the release.
-4. Track Labs graduation and remaining packaging work in [ROADMAP.md](ROADMAP.md) rather than expanding the v1 contract after tagging.
+2. Create a `vX.Y.Z` tag whose root, CLI, backend, and portable-runtime versions match.
+3. Let the native release workflow build and smoke-test every supported OS/CPU bundle on its own runner.
+4. Publish the archives, SHA-256 files, update manifest, and `localgrowth-os` npm CLI from that tag.
+5. Track Labs graduation and signed desktop packaging in [ROADMAP.md](ROADMAP.md) rather than expanding the v1 contract after tagging.
