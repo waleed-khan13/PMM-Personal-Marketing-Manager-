@@ -1,3 +1,4 @@
+import os
 from __future__ import annotations
 
 import asyncio
@@ -155,7 +156,7 @@ def test_lead_import_deduplicates_tracks_evidence_and_honors_suppression(client)
 def test_google_places_connector_is_encrypted_and_search_results_are_transient(client, monkeypatch) -> None:
     from app.connectors.base import ConnectorTestResult
 
-    api_key = "google-places-local-secret"
+    api_key = os.getenv("API_KEY", "")
     created = client.post(
         "/api/connectors",
         json={
