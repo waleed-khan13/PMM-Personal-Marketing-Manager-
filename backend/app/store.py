@@ -100,6 +100,7 @@ def _ensure_singletons(session: Session) -> None:
                 base_url="http://127.0.0.1:7860",
                 model="",
                 api_key=None,
+                workflow_json=None,
                 updated_at=None,
             )
         )
@@ -328,6 +329,11 @@ def _job_dict(job: LocalJob) -> dict[str, Any]:
         "lockedAt": job.locked_at,
         "completedAt": job.completed_at,
         "lastError": job.last_error,
+        "progressPercent": job.progress_percent,
+        "progressMessage": job.progress_message,
+        "cancelRequested": job.cancel_requested,
+        "remoteRef": job.remote_ref,
+        "resultRef": job.result_ref,
         "createdAt": job.created_at,
         "updatedAt": job.updated_at,
     }
@@ -379,10 +385,15 @@ def public_state(
                 "baseUrl": image_provider.base_url,
                 "model": image_provider.model,
                 "hasApiKey": bool(image_provider.api_key),
+                "hasWorkflow": bool(image_provider.workflow_json),
                 "configured": bool(
                     image_provider.updated_at
                     and image_provider.base_url
-                    and (image_provider.kind == "automatic1111" or image_provider.model)
+                    and (
+                        image_provider.kind == "automatic1111"
+                        or (image_provider.kind == "comfyui" and image_provider.workflow_json)
+                        or (image_provider.kind == "openai-images" and image_provider.model)
+                    )
                 ),
                 "updatedAt": image_provider.updated_at,
             },
@@ -476,6 +487,15 @@ def update_image_provider(payload: ImageProviderUpdate) -> None:
             raise RuntimeError("Image provider settings are missing.")
         normalized_url = payload.base_url.rstrip("/")
         same_endpoint = provider.kind == payload.kind and provider.base_url == normalized_url
+        workflow_json = (
+            payload.workflow_json
+            if payload.workflow_json
+            else provider.workflow_json
+            if same_endpoint
+            else None
+        )
+        if payload.kind == "comfyui" and not workflow_json:
+            raise AppError("Paste a ComfyUI workflow exported in API format before saving.")
         provider.kind = payload.kind
         provider.base_url = normalized_url
         provider.model = payload.model
@@ -486,6 +506,7 @@ def update_image_provider(payload: ImageProviderUpdate) -> None:
             if same_endpoint
             else None
         )
+        provider.workflow_json = workflow_json if payload.kind == "comfyui" else None
         provider.updated_at = utc_now()
         _append_audit(
             session,
@@ -557,6 +578,8 @@ def image_provider_runtime() -> dict[str, str]:
             "base_url": provider.base_url,
             "model": provider.model,
             "api_key": decrypt_secret(provider.api_key),
+            "workflow_json": provider.workflow_json or "",
+            "updated_at": provider.updated_at or "",
         }
 
 
@@ -1108,6 +1131,9 @@ def claim_due_job() -> dict[str, Any] | None:
         job.locked_at = now
         job.updated_at = now
         job.last_error = None
+        if job.kind == "media.generate":
+            job.progress_percent = max(job.progress_percent, 5)
+            job.progress_message = "Local image worker started."
         session.flush()
         return _job_dict(job)
 
@@ -1154,6 +1180,12 @@ def fail_job(job_id: str, message: str, *, retryable: bool) -> None:
         job.locked_at = None
         job.updated_at = _utc_iso(now)
         job.last_error = message[:2_000]
+        if job.kind == "media.generate":
+            job.progress_message = (
+                "Generation will retry automatically."
+                if job.status == "retrying"
+                else "Generation failed; review the error and retry when ready."
+            )
         _append_audit(
             session,
             action=action,

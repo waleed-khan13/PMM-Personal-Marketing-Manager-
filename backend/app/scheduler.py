@@ -5,7 +5,16 @@ from contextlib import suppress
 from typing import Any
 
 from app.errors import AppError
+from app.media_job_store import (
+    complete_media_generation_job,
+    finish_cancelled_media_generation,
+    media_generation_cancel_requested,
+    update_media_generation_progress,
+)
+from app.media_store import create_generated_media_asset
+from app.schemas import ImageGenerateRequest
 from app.seo_store import save_seo_audit
+from app.services.image_generation import GenerationCancelled, generate_image
 from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.seo_audit import audit_website
 from app.store import (
@@ -15,6 +24,7 @@ from app.store import (
     fail_job,
     fail_publish_uncertain,
     finish_publish,
+    image_provider_runtime,
     recover_stale_jobs,
     reserve_publish,
     scheduler_paused,
@@ -102,6 +112,67 @@ class LocalScheduler:
 
     async def _execute(self, job: dict[str, Any]) -> None:
         job_id = str(job["id"])
+        if job.get("kind") == "media.generate":
+            payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+            request_payload = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+            provider_snapshot = (
+                payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
+            )
+            try:
+                provider = image_provider_runtime()
+                if provider.get("updated_at") != provider_snapshot.get("updated_at"):
+                    raise AppError(
+                        "Image provider settings changed after this job was queued; retry to use the new settings."
+                    )
+                request = ImageGenerateRequest.model_validate(request_payload)
+
+                def progress(percent: int, message: str) -> None:
+                    update_media_generation_progress(job_id, percent, message)
+
+                def remote_ref(value: str) -> None:
+                    update_media_generation_progress(
+                        job_id,
+                        20,
+                        "Workflow queued in the image provider.",
+                        remote_ref=value,
+                    )
+
+                generated = await generate_image(
+                    provider,
+                    request,
+                    progress=progress,
+                    cancel_check=lambda: media_generation_cancel_requested(job_id),
+                    remote_ref=remote_ref,
+                )
+                if media_generation_cancel_requested(job_id):
+                    raise GenerationCancelled
+                update_media_generation_progress(job_id, 92, "Saving the verified image locally.")
+                result = create_generated_media_asset(
+                    generated.data,
+                    prompt=request.prompt,
+                    negative_prompt=request.negative_prompt,
+                    provider_kind=generated.provider_kind,
+                    model=generated.model,
+                    parameters=generated.parameters,
+                )
+                complete_media_generation_job(
+                    job_id,
+                    str(result["asset"]["id"]),
+                    bool(result["deduplicated"]),
+                )
+                self._last_error = None
+            except GenerationCancelled:
+                finish_cancelled_media_generation(job_id)
+                self._last_error = None
+            except Exception as error:  # noqa: BLE001 - generation is safe to retry locally.
+                message = error.message if isinstance(error, AppError) else str(error) or "Image generation failed."
+                if media_generation_cancel_requested(job_id):
+                    finish_cancelled_media_generation(job_id)
+                    self._last_error = None
+                else:
+                    fail_job(job_id, message, retryable=True)
+                    self._last_error = message
+            return
         if job.get("kind") == "seo.audit":
             payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
             url = str(payload.get("url") or "")

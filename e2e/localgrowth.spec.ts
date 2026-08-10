@@ -579,11 +579,12 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
   await page.getByLabel("Quality").click();
   await page.getByRole("option", { name: "Medium" }).click();
   const imageGenerationResponse = page.waitForResponse(
-    (response) => response.url().endsWith("/api/media/generate") && response.request().method() === "POST",
+    (response) => response.url().endsWith("/api/media/generations") && response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Generate image" }).click();
   expect((await imageGenerationResponse).status()).toBe(200);
-  await expect(page.getByText("Image ready for review")).toBeVisible();
+  await expect(page.getByText("Image generation queued")).toBeVisible();
+  await expect(page.getByText("Image saved privately and ready for review.")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("AI provenance")).toBeVisible();
   await expect(page.getByTitle(imagePrompt)).toBeVisible();
 

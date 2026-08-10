@@ -46,6 +46,7 @@ class ImageProviderSettings(Base):
     base_url: Mapped[str] = mapped_column(String(2048), nullable=False, default="http://127.0.0.1:7860")
     model: Mapped[str] = mapped_column(String(180), nullable=False, default="")
     api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    workflow_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
@@ -170,6 +171,11 @@ class LocalJob(Base):
     locked_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     completed_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    progress_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    remote_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    result_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 

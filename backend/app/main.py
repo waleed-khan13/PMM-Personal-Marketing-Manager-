@@ -36,6 +36,12 @@ from app.lead_store import (
     update_lead_score_override,
     update_lead_status,
 )
+from app.media_job_store import (
+    cancel_media_generation,
+    list_media_generation_jobs,
+    retry_media_generation,
+    schedule_media_generation,
+)
 from app.media_store import (
     MAX_MEDIA_BYTES,
     create_generated_media_asset,
@@ -243,6 +249,34 @@ async def generate_media_asset(payload: ImageGenerateRequest) -> dict[str, Any]:
         parameters=generated.parameters,
     )
     return {"ok": True, **result}
+
+
+@app.get("/api/media/generations")
+def get_media_generation_jobs(limit: int = 30) -> JSONResponse:
+    if not 1 <= limit <= 100:
+        raise AppError("Generation history limit must be between 1 and 100.")
+    return JSONResponse(list_media_generation_jobs(limit), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/media/generations")
+def queue_media_generation(payload: ImageGenerateRequest) -> dict[str, Any]:
+    job = schedule_media_generation(payload, image_provider_runtime())
+    local_scheduler.wake()
+    return {"ok": True, "job": job}
+
+
+@app.post("/api/media/generations/{job_id}/cancel")
+def cancel_queued_media_generation(job_id: str) -> dict[str, Any]:
+    job = cancel_media_generation(job_id)
+    local_scheduler.wake()
+    return {"ok": True, "job": job}
+
+
+@app.post("/api/media/generations/{job_id}/retry")
+def retry_queued_media_generation(job_id: str) -> dict[str, Any]:
+    job = retry_media_generation(job_id)
+    local_scheduler.wake()
+    return {"ok": True, "job": job}
 
 
 @app.get("/api/media/{asset_id}/content")

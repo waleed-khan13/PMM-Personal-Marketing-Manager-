@@ -39,7 +39,8 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 - [x] WhatsApp Cloud approved-template notification adapter with encrypted tokens, business-number verification, exact draft previews, and returned message IDs; interactive approval remains excluded because Meta requires a reachable webhook.
 - [x] Private local media library with verified raster uploads, SHA-256 deduplication, previews, metadata, audited deletion, and social-size image transforms.
 - [x] AI image generation with separately encrypted OpenAI-compatible and local Automatic1111/Forge providers, connection tests, validated ingestion, and durable provenance.
-- [ ] ComfyUI workflow adapter, Instagram carousels/Reels, cross-channel calendar, and richer failure recovery.
+- [x] ComfyUI API-format workflow adapter with explicit placeholders, durable SQLite generation queue, progress, cancellation, retry, restart recovery, and final asset references.
+- [ ] Instagram carousels/Reels, cross-channel calendar, and richer publisher failure recovery.
 - [ ] Normalized engagement metrics and experiment ledger.
 
 **Acceptance:** edits invalidate approval, scheduled posts cannot publish twice, and expired or revoked tokens produce actionable local recovery steps.

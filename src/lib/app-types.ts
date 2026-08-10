@@ -1,5 +1,5 @@
 export type ProviderKind = "ollama" | "openai-compatible";
-export type ImageProviderKind = "openai-images" | "automatic1111";
+export type ImageProviderKind = "openai-images" | "automatic1111" | "comfyui";
 export type ContentChannel = "linkedin" | "linkedin-company" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";
 export type LocalJobStatus = "queued" | "retrying" | "running" | "completed" | "failed" | "cancelled" | "missed";
@@ -34,6 +34,7 @@ export interface PublicImageProviderSettings {
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
+  hasWorkflow: boolean;
   configured: boolean;
   updatedAt: string | null;
 }
@@ -111,6 +112,37 @@ export interface MediaLibraryResponse {
   total: number;
   maxUploadBytes: number;
   storagePolicy: "local-only";
+}
+
+export interface MediaGenerationJob {
+  id: string;
+  kind: "media.generate";
+  status: LocalJobStatus;
+  payload: {
+    request: {
+      prompt: string;
+      negative_prompt: string;
+      preset: "square" | "portrait" | "landscape";
+      quality: "low" | "medium" | "high" | "auto";
+      steps: number;
+      guidance_scale: number;
+      seed: number;
+    };
+    provider: { kind: ImageProviderKind; model: string; updated_at: string };
+  };
+  runAt: string;
+  attempts: number;
+  maxAttempts: number;
+  lockedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  progressPercent: number;
+  progressMessage: string | null;
+  cancelRequested: boolean;
+  remoteRef: string | null;
+  resultRef: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LocalJob {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from typing import Any, Literal, Self
 
@@ -38,16 +39,32 @@ class ProviderUpdate(ApiModel):
 
 
 class ImageProviderUpdate(ApiModel):
-    kind: Literal["openai-images", "automatic1111"]
+    kind: Literal["openai-images", "automatic1111", "comfyui"]
     base_url: str = Field(min_length=1, max_length=2_048)
     model: str = Field(default="", max_length=180)
     api_key: str = Field(default="", max_length=2_000)
+    workflow_json: str = Field(default="", max_length=200_000)
 
     @model_validator(mode="after")
     def require_hosted_model(self) -> Self:
         if self.kind == "openai-images" and not self.model:
             raise ValueError("Choose an image model for an OpenAI-compatible provider.")
         return self
+
+    @field_validator("workflow_json")
+    @classmethod
+    def validate_workflow_json(cls, value: str) -> str:
+        if not value:
+            return ""
+        try:
+            workflow = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise ValueError("ComfyUI workflow must be valid JSON exported in API format.") from error
+        if not isinstance(workflow, dict) or not workflow:
+            raise ValueError("ComfyUI workflow must be a non-empty JSON object.")
+        if len(workflow) > 1_000:
+            raise ValueError("ComfyUI workflow contains too many nodes.")
+        return json.dumps(workflow, separators=(",", ":"), ensure_ascii=False)
 
 
 class ImageGenerateRequest(ApiModel):

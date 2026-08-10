@@ -13,6 +13,7 @@ import {
   PlugZap,
   Plus,
   RefreshCw,
+  RotateCcw,
   Send,
   ShieldCheck,
   Trash2,
@@ -43,6 +44,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   ImageProviderKind,
   MediaAsset,
+  MediaGenerationJob,
   MediaLibraryResponse,
   ProviderConnectionResult,
   PublicAppState,
@@ -94,7 +96,10 @@ async function uploadAsset(file: File) {
 
 export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generationActiveRef = useRef(false);
   const [library, setLibrary] = useState<MediaLibraryResponse | null>(null);
+  const [generationJobs, setGenerationJobs] = useState<MediaGenerationJob[]>([]);
+  const [pollGenerations, setPollGenerations] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -106,6 +111,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
     baseUrl: imageProvider.baseUrl,
     model: imageProvider.model,
     apiKey: "",
+    workflowJson: "",
   });
   const [generateForm, setGenerateForm] = useState({
     prompt: "",
@@ -128,6 +134,15 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
     }
   }, []);
 
+  const loadGenerationJobs = useCallback(async () => {
+    const response = await requestJson<{ items: MediaGenerationJob[] }>(
+      "/api/media/generations?limit=20",
+      { cache: "no-store" },
+    );
+    setGenerationJobs(response.items);
+    return response.items;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void requestJson<MediaLibraryResponse>("/api/media", { cache: "no-store" })
@@ -146,6 +161,53 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void requestJson<{ items: MediaGenerationJob[] }>("/api/media/generations?limit=20", {
+      cache: "no-store",
+    })
+      .then((response) => {
+        if (cancelled) return;
+        setGenerationJobs(response.items);
+        const items = response.items;
+        const active = items.some((job) => ["queued", "retrying", "running"].includes(job.status));
+        generationActiveRef.current = active;
+        setPollGenerations(active);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : "Could not load image generation jobs.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadGenerationJobs]);
+
+  useEffect(() => {
+    if (!pollGenerations) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const items = await loadGenerationJobs();
+        const active = items.some((job) => ["queued", "retrying", "running"].includes(job.status));
+        if (!cancelled && generationActiveRef.current && !active) {
+          await loadLibrary();
+          generationActiveRef.current = false;
+          setPollGenerations(false);
+        }
+      } catch {
+        // A later poll retries transient localhost startup or navigation races.
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [loadGenerationJobs, loadLibrary, pollGenerations]);
 
   async function submitUpload(event: FormEvent) {
     event.preventDefault();
@@ -171,9 +233,10 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
   function changeProviderKind(kind: ImageProviderKind) {
     setImageProviderForm({
       kind,
-      baseUrl: kind === "automatic1111" ? "http://127.0.0.1:7860" : "https://api.openai.com/v1",
-      model: kind === "automatic1111" ? "" : "gpt-image-2",
+      baseUrl: kind === "automatic1111" ? "http://127.0.0.1:7860" : kind === "comfyui" ? "http://127.0.0.1:8188" : "https://api.openai.com/v1",
+      model: kind === "openai-images" ? "gpt-image-2" : "",
       apiKey: "",
+      workflowJson: "",
     });
   }
 
@@ -193,7 +256,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
       } else {
         toast.success("Image provider settings saved");
       }
-      setImageProviderForm((current) => ({ ...current, apiKey: "" }));
+      setImageProviderForm((current) => ({ ...current, apiKey: "", workflowJson: "" }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save the image provider.");
     } finally {
@@ -207,18 +270,41 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
     try {
       const response = await requestJson<{
         ok: boolean;
-        asset: MediaAsset;
-        deduplicated: boolean;
-      }>("/api/media/generate", {
+        job: MediaGenerationJob;
+      }>("/api/media/generations", {
         method: "POST",
         body: JSON.stringify(generateForm),
       });
-      await loadLibrary();
-      toast.success(response.deduplicated ? "Existing generated image reused" : "Image ready for review", {
-        description: "Saved privately. Nothing was posted.",
+      generationActiveRef.current = true;
+      setPollGenerations(true);
+      setGenerationJobs((current) => [response.job, ...current.filter((job) => job.id !== response.job.id)]);
+      void loadGenerationJobs();
+      toast.success("Image generation queued", {
+        description: "You can leave this screen; the restart-safe local worker will continue.",
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Image generation failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function updateGenerationJob(job: MediaGenerationJob, action: "cancel" | "retry") {
+    setBusy(`${action}-generation-${job.id}`);
+    try {
+      const response = await requestJson<{ job: MediaGenerationJob }>(
+        `/api/media/generations/${job.id}/${action}`,
+        { method: "POST" },
+      );
+      setGenerationJobs((current) => current.map((item) => item.id === job.id ? response.job : item));
+      if (action === "retry") {
+        generationActiveRef.current = true;
+        setPollGenerations(true);
+        void loadGenerationJobs();
+      }
+      toast.success(action === "cancel" ? "Cancellation requested" : "Image generation queued again");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Could not ${action} this generation.`);
     } finally {
       setBusy(null);
     }
@@ -333,7 +419,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
               />
               <div className="flex justify-between text-[10px] text-zinc-600"><span>Be specific about subject, setting, lighting, and exclusions.</span><span>{generateForm.prompt.length}/4000</span></div>
             </div>
-            {imageProvider.kind === "automatic1111" ? (
+            {imageProvider.kind !== "openai-images" ? (
               <div className="space-y-2">
                 <Label htmlFor="image-negative-prompt">Negative prompt</Label>
                 <Textarea id="image-negative-prompt" maxLength={2000} onChange={(event) => setGenerateForm((current) => ({ ...current, negativePrompt: event.target.value }))} placeholder="blurry, watermark, distorted text" rows={2} value={generateForm.negativePrompt} />
@@ -377,11 +463,12 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
                 <Label htmlFor="image-provider-kind">Adapter</Label>
                 <Select onValueChange={(value) => changeProviderKind(value as ImageProviderKind)} value={imageProviderForm.kind}>
                   <SelectTrigger className="w-full bg-black" id="image-provider-kind"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="automatic1111">Automatic1111 / Forge</SelectItem><SelectItem value="openai-images">OpenAI-compatible Images API</SelectItem></SelectContent>
+                  <SelectContent><SelectItem value="comfyui">ComfyUI workflow</SelectItem><SelectItem value="automatic1111">Automatic1111 / Forge</SelectItem><SelectItem value="openai-images">OpenAI-compatible Images API</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2"><Label htmlFor="image-provider-url">Base URL</Label><Input id="image-provider-url" onChange={(event) => setImageProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} required type="url" value={imageProviderForm.baseUrl} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "Start WebUI with --api. Forge uses the same endpoint." : "Use an API root or a URL ending in /v1."}</p></div>
-              <div className="space-y-2"><Label htmlFor="image-provider-model">Model {imageProviderForm.kind === "automatic1111" ? "(optional checkpoint)" : ""}</Label><Input id="image-provider-model" onChange={(event) => setImageProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={imageProviderForm.kind === "automatic1111" ? "Use active checkpoint" : "gpt-image-2"} required={imageProviderForm.kind === "openai-images"} value={imageProviderForm.model} /></div>
+              <div className="space-y-2"><Label htmlFor="image-provider-url">Base URL</Label><Input id="image-provider-url" onChange={(event) => setImageProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} required type="url" value={imageProviderForm.baseUrl} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "Start WebUI with --api. Forge uses the same endpoint." : imageProviderForm.kind === "comfyui" ? "Default local ComfyUI server: http://127.0.0.1:8188" : "Use an API root or a URL ending in /v1."}</p></div>
+              <div className="space-y-2"><Label htmlFor="image-provider-model">Model {imageProviderForm.kind !== "openai-images" ? "(optional label/checkpoint)" : ""}</Label><Input id="image-provider-model" onChange={(event) => setImageProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={imageProviderForm.kind === "automatic1111" ? "Use active checkpoint" : imageProviderForm.kind === "comfyui" ? "Workflow model" : "gpt-image-2"} required={imageProviderForm.kind === "openai-images"} value={imageProviderForm.model} /></div>
+              {imageProviderForm.kind === "comfyui" ? <div className="space-y-2"><Label htmlFor="comfy-workflow">Workflow (API format JSON)</Label><Textarea className="min-h-32 font-mono text-[11px]" id="comfy-workflow" maxLength={200000} onChange={(event) => setImageProviderForm((current) => ({ ...current, workflowJson: event.target.value }))} placeholder={imageProvider.hasWorkflow ? "Stored workflow — leave blank to keep it" : "Paste ComfyUI's Save (API Format) JSON. Replace values with {{prompt}}, {{negative_prompt}}, {{seed}}, {{width}}, {{height}}, {{steps}}, or {{guidance_scale}}."} value={imageProviderForm.workflowJson} /><p className="text-[10px] leading-4 text-zinc-600">The workflow stays on this computer. LocalGrowth injects only declared placeholders and reads the first image output.</p></div> : null}
               <div className="space-y-2"><Label htmlFor="image-provider-key">API key</Label><Input autoComplete="off" id="image-provider-key" onChange={(event) => setImageProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={imageProvider.hasApiKey ? "Stored — blank keeps current key" : "Optional for local; required by most hosted APIs"} type="password" value={imageProviderForm.apiKey} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "For WebUI --api-auth, enter username:password." : "Sent only as a bearer header and encrypted at rest."}</p></div>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(false)} type="button" variant="outline">{busy === "image-provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
@@ -391,6 +478,24 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
           </div>
         </CardContent>
       </Card>
+
+      {generationJobs.length ? (
+        <Card className="overflow-hidden border-cyan-500/15 bg-[#050505]">
+          <CardHeader className="border-b border-zinc-900">
+            <div className="flex items-center justify-between gap-3"><div><CardTitle>Generation queue</CardTitle><CardDescription>Durable local jobs continue across navigation and restart safely after interruption.</CardDescription></div><Badge className="border-cyan-500/20 bg-cyan-500/5 text-cyan-300" variant="outline">{generationJobs.filter((job) => ["queued", "retrying", "running"].includes(job.status)).length} active</Badge></div>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 sm:p-5">
+            {generationJobs.slice(0, 6).map((job) => (
+              <div className="rounded-lg border border-zinc-900 bg-black p-4" key={job.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><Badge className={cn("border-zinc-800 bg-zinc-950", job.status === "completed" ? "text-emerald-300" : job.status === "failed" ? "text-red-300" : job.status === "cancelled" ? "text-zinc-500" : "text-cyan-300")} variant="outline">{job.status}</Badge><span className="font-mono text-[10px] text-zinc-700">{job.payload.provider.kind}</span></div><p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">{job.payload.request.prompt}</p></div><div className="flex gap-2">{["queued", "retrying", "running"].includes(job.status) ? <Button disabled={busy === `cancel-generation-${job.id}` || job.cancelRequested} onClick={() => void updateGenerationJob(job, "cancel")} size="sm" type="button" variant="ghost">{busy === `cancel-generation-${job.id}` ? <Loader2 className="animate-spin" /> : <X />}Cancel</Button> : null}{["failed", "cancelled", "missed"].includes(job.status) ? <Button disabled={busy === `retry-generation-${job.id}`} onClick={() => void updateGenerationJob(job, "retry")} size="sm" type="button" variant="outline">{busy === `retry-generation-${job.id}` ? <Loader2 className="animate-spin" /> : <RotateCcw />}Retry</Button> : null}</div></div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-900"><div className={cn("h-full rounded-full transition-[width] duration-500", job.status === "failed" ? "bg-red-500" : job.status === "cancelled" ? "bg-zinc-700" : "bg-gradient-to-r from-violet-500 to-cyan-400")} style={{ width: `${job.progressPercent}%` }} /></div>
+                <div className="mt-2 flex flex-wrap justify-between gap-2 text-[10px] text-zinc-600"><span>{job.progressMessage ?? "Waiting for status."}</span><span>{job.progressPercent}% · attempt {job.attempts}/{job.maxAttempts}</span></div>
+                {job.lastError ? <p className="mt-2 text-xs leading-5 text-red-300">{job.lastError}</p> : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="overflow-hidden border-zinc-800 bg-[#060606]">

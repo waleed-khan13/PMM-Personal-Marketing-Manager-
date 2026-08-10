@@ -2748,6 +2748,7 @@ def test_image_provider_settings_are_separate_and_encrypted(client) -> None:
         "baseUrl": "https://images.example/v1",
         "model": "image-model",
         "hasApiKey": True,
+        "hasWorkflow": False,
         "configured": True,
         "updatedAt": public["updatedAt"],
     }
@@ -2926,3 +2927,290 @@ def test_malformed_generated_image_returns_a_validation_error(client, monkeypatc
     )
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "The image data is not a valid JPEG, PNG, or WebP image."
+
+
+def test_comfyui_workflow_settings_are_validated_and_preserved(client) -> None:
+    workflow = {
+        "3": {"class_type": "KSampler", "inputs": {"seed": "{{seed}}", "steps": "{{steps}}"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "{{prompt}}"}},
+        "9": {"class_type": "SaveImage", "inputs": {"images": ["3", 0]}},
+    }
+    saved = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "comfyui",
+            "baseUrl": "http://127.0.0.1:8188/",
+            "model": "local-workflow",
+            "workflowJson": json.dumps(workflow),
+        },
+    )
+    assert saved.status_code == 200
+    public = saved.json()["state"]["imageProvider"]
+    assert public["kind"] == "comfyui"
+    assert public["baseUrl"] == "http://127.0.0.1:8188"
+    assert public["hasWorkflow"] is True
+    assert public["configured"] is True
+    assert "workflowJson" not in public
+
+    preserved = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "comfyui",
+            "baseUrl": "http://127.0.0.1:8188",
+            "model": "renamed-workflow",
+            "workflowJson": "",
+        },
+    )
+    assert preserved.status_code == 200
+    assert preserved.json()["state"]["imageProvider"]["hasWorkflow"] is True
+
+    rejected = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "comfyui",
+            "baseUrl": "http://127.0.0.1:8189",
+            "model": "",
+            "workflowJson": "not-json",
+        },
+    )
+    assert rejected.status_code == 422
+
+
+def test_comfyui_adapter_injects_placeholders_and_fetches_first_output(monkeypatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.schemas import ImageGenerateRequest
+    from app.services import image_generation
+
+    output = BytesIO()
+    Image.new("RGB", (4, 3), color=(139, 92, 246)).save(output, format="PNG")
+    calls: list[dict[str, object]] = []
+
+    async def fake_request(url: str, **kwargs):
+        calls.append({"url": url, **kwargs})
+        if url.endswith("/prompt"):
+            return {"prompt_id": "prompt-123", "number": 1}
+        if url.endswith("/history/prompt-123"):
+            return {
+                "prompt-123": {
+                    "status": {"status_str": "success"},
+                    "outputs": {
+                        "9": {
+                            "images": [
+                                {"filename": "result.png", "subfolder": "localgrowth", "type": "output"}
+                            ]
+                        }
+                    },
+                }
+            }
+        raise AssertionError(f"Unexpected ComfyUI request: {url}")
+
+    async def fake_image(url: str, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return output.getvalue()
+
+    monkeypatch.setattr(image_generation, "_request_json", fake_request)
+    monkeypatch.setattr(image_generation, "_request_image_bytes", fake_image)
+    progress: list[tuple[int, str]] = []
+    remote_refs: list[str] = []
+    generated = asyncio.run(
+        image_generation.generate_image(
+            {
+                "kind": "comfyui",
+                "base_url": "http://127.0.0.1:8188",
+                "model": "flux-local",
+                "api_key": "",
+                "workflow_json": json.dumps(
+                    {
+                        "3": {
+                            "class_type": "KSampler",
+                            "inputs": {
+                                "seed": "{{seed}}",
+                                "steps": "{{steps}}",
+                                "cfg": "{{guidance_scale}}",
+                            },
+                        },
+                        "5": {
+                            "class_type": "EmptyLatentImage",
+                            "inputs": {"width": "{{width}}", "height": "{{height}}"},
+                        },
+                        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "{{prompt}}"}},
+                    }
+                ),
+            },
+            ImageGenerateRequest(
+                prompt="A local editorial campaign image",
+                preset="portrait",
+                steps=31,
+                guidanceScale=6.5,
+                seed=77,
+            ),
+            progress=lambda percent, message: progress.append((percent, message)),
+            remote_ref=remote_refs.append,
+        )
+    )
+    assert generated.data == output.getvalue()
+    assert generated.provider_kind == "comfyui"
+    assert generated.parameters["promptId"] == "prompt-123"
+    assert remote_refs == ["prompt-123"]
+    prompt_body = calls[0]["json_body"]["prompt"]
+    assert prompt_body["3"]["inputs"] == {"seed": 77, "steps": 31, "cfg": 6.5}
+    assert prompt_body["5"]["inputs"] == {"width": 896, "height": 1152}
+    assert prompt_body["6"]["inputs"]["text"] == "A local editorial campaign image"
+    assert progress[-1][0] == 85
+    assert calls[-1]["params"] == {
+        "filename": "result.png",
+        "subfolder": "localgrowth",
+        "type": "output",
+    }
+
+
+def test_comfyui_running_prompt_is_deleted_and_interrupted_on_cancel(monkeypatch) -> None:
+    from app.schemas import ImageGenerateRequest
+    from app.services import image_generation
+
+    calls: list[dict[str, object]] = []
+    cancelled = False
+
+    async def fake_request(url: str, **kwargs):
+        nonlocal cancelled
+        calls.append({"url": url, **kwargs})
+        if url.endswith("/prompt"):
+            return {"prompt_id": "prompt-cancel", "number": 1}
+        if url.endswith("/queue") and kwargs.get("method") != "POST":
+            return {"queue_running": [[1, "prompt-cancel", {}, [], {}]], "queue_pending": []}
+        if url.endswith(("/queue", "/interrupt")):
+            return {}
+        raise AssertionError(f"Unexpected ComfyUI request: {url}")
+
+    def save_remote_ref(_value: str) -> None:
+        nonlocal cancelled
+        cancelled = True
+
+    monkeypatch.setattr(image_generation, "_request_json", fake_request)
+    with pytest.raises(image_generation.GenerationCancelled):
+        asyncio.run(
+            image_generation.generate_image(
+                {
+                    "kind": "comfyui",
+                    "base_url": "http://127.0.0.1:8188",
+                    "model": "",
+                    "api_key": "",
+                    "workflow_json": json.dumps(
+                        {"6": {"class_type": "CLIPTextEncode", "inputs": {"text": "{{prompt}}"}}}
+                    ),
+                },
+                ImageGenerateRequest(prompt="Cancel this running local workflow"),
+                cancel_check=lambda: cancelled,
+                remote_ref=save_remote_ref,
+            )
+        )
+    queue_delete = next(
+        call for call in calls if str(call["url"]).endswith("/queue") and call.get("method") == "POST"
+    )
+    assert queue_delete["json_body"] == {"delete": ["prompt-cancel"]}
+    assert any(str(call["url"]).endswith("/interrupt") for call in calls)
+
+
+def test_media_generation_runs_through_durable_worker(client, monkeypatch) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.database import write_session
+    from app.models import LocalJob
+    from app.scheduler import LocalScheduler
+    from app.services.image_generation import GeneratedImage
+    from app.store import utc_now
+
+    configured = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "openai-images",
+            "baseUrl": "https://images.example/v1",
+            "model": "queue-image-model",
+            "apiKey": "secret",
+        },
+    )
+    assert configured.status_code == 200
+    assert client.put("/api/scheduler", json={"paused": True}).status_code == 200
+    queued = client.post(
+        "/api/media/generations",
+        json={"prompt": "A durable queued campaign visual", "preset": "landscape"},
+    )
+    assert queued.status_code == 200
+    assert queued.json()["job"]["status"] == "queued"
+    assert queued.json()["job"]["progressPercent"] == 0
+
+    output = BytesIO()
+    Image.new("RGB", (80, 45), color=(34, 211, 238)).save(output, format="PNG")
+
+    async def fake_generate(_settings, request, **kwargs):
+        kwargs["progress"](55, "Provider is generating.")
+        return GeneratedImage(
+            data=output.getvalue(),
+            provider_kind="openai-images",
+            model="queue-image-model",
+            parameters={"preset": request.preset},
+        )
+
+    monkeypatch.setattr("app.scheduler.generate_image", fake_generate)
+    with write_session() as session:
+        stored_job = session.get(LocalJob, queued.json()["job"]["id"])
+        assert stored_job is not None
+        stored_job.status = "running"
+        stored_job.attempts = 1
+        stored_job.locked_at = utc_now()
+        stored_job.updated_at = utc_now()
+    claimed = client.get("/api/media/generations").json()["items"][0]
+    assert claimed["kind"] == "media.generate"
+    worker = LocalScheduler(interval=1, catch_up_hours=24, stale_minutes=10)
+    asyncio.run(worker._execute(claimed))
+    assert client.put("/api/scheduler", json={"paused": False}).status_code == 200
+
+    jobs = client.get("/api/media/generations").json()["items"]
+    completed = next(item for item in jobs if item["id"] == queued.json()["job"]["id"])
+    assert completed["status"] == "completed"
+    assert completed["progressPercent"] == 100
+    assert completed["resultRef"]
+    assets = client.get("/api/media").json()["items"]
+    assert any(item["id"] == completed["resultRef"] for item in assets)
+
+
+def test_media_generation_can_be_cancelled_and_retried(client) -> None:
+    configured = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "automatic1111",
+            "baseUrl": "http://127.0.0.1:7860",
+            "model": "",
+        },
+    )
+    assert configured.status_code == 200
+    assert client.put("/api/scheduler", json={"paused": True}).status_code == 200
+    queued = client.post(
+        "/api/media/generations",
+        json={"prompt": "A cancellable private image generation"},
+    ).json()["job"]
+    cancelled = client.post(f"/api/media/generations/{queued['id']}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["job"]["status"] == "cancelled"
+    changed_provider = client.put(
+        "/api/settings/image-provider",
+        json={
+            "kind": "openai-images",
+            "baseUrl": "https://images-v2.example/v1",
+            "model": "new-image-model",
+            "apiKey": "new-secret",
+        },
+    )
+    assert changed_provider.status_code == 200
+    retried = client.post(f"/api/media/generations/{queued['id']}/retry")
+    assert retried.status_code == 200
+    assert retried.json()["job"]["status"] == "queued"
+    assert retried.json()["job"]["attempts"] == 0
+    assert retried.json()["job"]["payload"]["provider"]["kind"] == "openai-images"
+    assert retried.json()["job"]["payload"]["provider"]["model"] == "new-image-model"
+    assert client.put("/api/scheduler", json={"paused": False}).status_code == 200
