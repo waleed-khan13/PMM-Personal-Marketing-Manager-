@@ -37,6 +37,16 @@ async function expectNoAccessibilityViolations(page: Page, testInfo: TestInfo, n
 test("runs real publishing workflows and a WhatsApp draft notification", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
+  await expect(page.getByText(/LOCAL SOCIAL.*v1\.0\.0/)).toBeVisible();
+  const primaryNavigation = page.getByRole("navigation", { name: "Primary" });
+  await expect(primaryNavigation.getByRole("button", { name: "Lead intelligence" })).toHaveCount(0);
+  await expect(primaryNavigation.getByRole("button", { name: "Local SEO lab" })).toHaveCount(0);
+
+  const releaseStateResponse = await page.request.get("/api/state");
+  expect(releaseStateResponse.ok()).toBeTruthy();
+  const releaseState = (await releaseStateResponse.json()) as PublicAppState;
+  expect(releaseState.features).toEqual({ edition: "social-v1", labsEnabled: false, previewModules: [] });
+  expect(releaseState.runtime.version).toBe("1.0.0");
 
   await navigate(page, "Integrations", "Connections");
 

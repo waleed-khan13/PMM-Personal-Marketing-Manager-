@@ -138,6 +138,7 @@ type NavItem = {
   id: ViewId;
   label: string;
   icon: LucideIcon;
+  preview?: boolean;
 };
 
 const navigation: NavItem[] = [
@@ -145,8 +146,8 @@ const navigation: NavItem[] = [
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
   { id: "media", label: "Media library", icon: Images },
-  { id: "leads", label: "Lead intelligence", icon: UsersRound },
-  { id: "seo", label: "Local SEO lab", icon: SearchCheck },
+  { id: "leads", label: "Lead intelligence", icon: UsersRound, preview: true },
+  { id: "seo", label: "Local SEO lab", icon: SearchCheck, preview: true },
   { id: "scheduler", label: "Scheduler", icon: Clock3 },
   { id: "integrations", label: "Integrations", icon: PlugZap },
   { id: "activity", label: "Activity", icon: Activity },
@@ -281,7 +282,7 @@ function RuntimeBadge({ state }: { state: PublicAppState | null }) {
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
         <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
       </span>
-      LOCAL · {state ? `v${state.runtime.version}` : "CONNECTING"}
+      LOCAL SOCIAL · {state ? `v${state.runtime.version}` : "CONNECTING"}
     </div>
   );
 }
@@ -296,6 +297,7 @@ function SidebarContent({
   onNavigate: (id: ViewId) => void;
 }) {
   const pending = state?.posts.filter((post) => post.status === "pending").length ?? 0;
+  const visibleNavigation = navigation.filter((item) => !item.preview || state?.features.labsEnabled);
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-[72px] items-center border-b border-zinc-900 px-5">
@@ -305,7 +307,7 @@ function SidebarContent({
         <p className="mb-3 px-2 text-[10px] font-semibold tracking-[0.18em] text-zinc-700 uppercase">
           Workspace
         </p>
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const Icon = item.icon;
           const selected = active === item.id;
           return (
@@ -323,6 +325,11 @@ function SidebarContent({
             >
               <Icon className={cn("size-4", selected ? "text-white" : "text-zinc-600 group-hover:text-zinc-300")} />
               <span>{item.label}</span>
+              {item.preview ? (
+                <Badge className="ml-auto h-5 border-zinc-700 px-1.5 text-[9px] text-zinc-500" variant="outline">
+                  LABS
+                </Badge>
+              ) : null}
               {item.id === "queue" && pending > 0 ? (
                 <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-black">
                   {pending}

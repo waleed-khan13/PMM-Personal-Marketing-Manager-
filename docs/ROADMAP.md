@@ -2,6 +2,10 @@
 
 LocalGrowth OS is a downloadable, open-source, localhost-only application. It is not a hosted SaaS product. Every core feature must work with data stored on the operator's own computer, and the application binds to loopback by default.
 
+## v1.0 release line
+
+The first stable release is intentionally social-first. The default navigation contains content creation, the approval queue, media, scheduling, integrations, and activity. Milestones 3 and 4 remain available only through the opt-in Labs flag until their remaining acceptance work is complete. This is a scope boundary, not a deletion or rewrite.
+
 ## Milestone 0 — working product shell
 
 - [x] Responsive localhost dashboard with custom shadcn-based UI.
@@ -26,7 +30,7 @@ LocalGrowth OS is a downloadable, open-source, localhost-only application. It is
 
 **Acceptance:** a fresh install starts locally, connects Ollama or an API provider, generates a draft, receives a Telegram decision through long polling, publishes exactly once, survives a restart, and exposes the complete audit trail without any hosted LocalGrowth service.
 
-## Milestone 2 — social publishing (current)
+## Milestone 2 — social publishing (v1 stable core)
 
 - [x] Local connector manifests, capability registry, CRUD API, and encrypted scoped multi-secret token vault.
 - [x] Slack account configuration plus real bot identity and Socket Mode token health checks.

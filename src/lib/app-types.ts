@@ -460,6 +460,11 @@ export interface WebsiteCrawlResult extends LeadImportRow {
 }
 
 export interface PublicAppState {
+  features: {
+    edition: "social-v1";
+    labsEnabled: boolean;
+    previewModules: Array<"lead-intelligence" | "local-seo">;
+  };
   workspace: WorkspaceSettings;
   provider: PublicProviderSettings;
   imageProvider: PublicImageProviderSettings;

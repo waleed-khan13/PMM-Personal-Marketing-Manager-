@@ -19,6 +19,11 @@ def test_health_state_and_encrypted_settings(client) -> None:
     initial = client.get("/api/state")
     assert initial.status_code == 200
     assert initial.json()["runtime"]["database"] == "sqlite"
+    assert initial.json()["features"] == {
+        "edition": "social-v1",
+        "labsEnabled": False,
+        "previewModules": [],
+    }
 
     workspace = client.put(
         "/api/settings/workspace",
@@ -50,6 +55,18 @@ def test_health_state_and_encrypted_settings(client) -> None:
     with sqlite3.connect(database_path) as connection:
         encrypted = connection.execute("SELECT api_key FROM provider_settings WHERE id = 1").fetchone()[0]
     assert "do-not-store-in-plaintext" not in encrypted
+
+
+def test_labs_require_an_explicit_environment_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+
+    monkeypatch.setenv("LOCALGROWTH_ENABLE_LABS", "1")
+    get_settings.cache_clear()
+    assert get_settings().labs_enabled is True
+
+    monkeypatch.setenv("LOCALGROWTH_ENABLE_LABS", "0")
+    get_settings.cache_clear()
+    assert get_settings().labs_enabled is False
 
 
 def test_lead_import_deduplicates_tracks_evidence_and_honors_suppression(client) -> None:

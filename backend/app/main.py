@@ -200,6 +200,11 @@ async def validation_error_handler(_request: Request, error: RequestValidationEr
 
 def state_response() -> dict[str, Any]:
     state = public_state(telegram_poller.status(), local_scheduler.status())
+    state["features"] = {
+        "edition": "social-v1",
+        "labsEnabled": settings.labs_enabled,
+        "previewModules": ["lead-intelligence", "local-seo"] if settings.labs_enabled else [],
+    }
     state["connectors"] = public_connector_state(slack_listener.statuses())
     state["leadSummary"] = lead_summary()
     state["icpProfile"] = icp_profile_state()

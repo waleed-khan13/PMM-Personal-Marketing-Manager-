@@ -1,8 +1,8 @@
 {
   "name": "localgrowth-os",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Open-source, localhost-only AI growth automation for content, leads, and SEO.",
+  "description": "Open-source, localhost-only AI social publishing with human approval.",
   "license": "MIT",
   "packageManager": "pnpm@10.7.0",
   "engines": {

@@ -450,6 +450,7 @@ launch(
     LOCALGROWTH_DATA_DIR: runtimeDirectory,
     LOCALGROWTH_SCHEDULER_INTERVAL: "0.25",
     LOCALGROWTH_SLACK_SOCKET_MODE: "0",
+    LOCALGROWTH_ENABLE_LABS: "0",
     LOCALGROWTH_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
     LOCALGROWTH_WHATSAPP_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/whatsapp`,
     LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,

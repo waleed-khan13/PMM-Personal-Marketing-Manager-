@@ -20,6 +20,7 @@ class Settings:
     scheduler_catch_up_hours: int
     scheduler_stale_minutes: int
     slack_socket_enabled: bool
+    labs_enabled: bool
 
     @property
     def database_url(self) -> str:
@@ -46,6 +47,12 @@ def get_settings() -> Settings:
         "no",
         "off",
     }
+    labs_enabled = os.getenv("LOCALGROWTH_ENABLE_LABS", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     return Settings(
         project_root=project_root,
         data_dir=data_dir,
@@ -59,4 +66,5 @@ def get_settings() -> Settings:
         scheduler_catch_up_hours=scheduler_catch_up_hours,
         scheduler_stale_minutes=scheduler_stale_minutes,
         slack_socket_enabled=slack_socket_enabled,
+        labs_enabled=labs_enabled,
     )

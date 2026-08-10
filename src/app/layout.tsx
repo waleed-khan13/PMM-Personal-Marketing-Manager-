@@ -4,7 +4,7 @@ import { AppProviders } from "@/components/app-providers";
 
 export const metadata: Metadata = {
   title: "LocalGrowth OS",
-  description: "Self-hosted, approval-first AI growth automation.",
+  description: "Local-first, approval-first AI social publishing automation.",
 };
 
 export const viewport: Viewport = {

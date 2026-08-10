@@ -6,6 +6,12 @@ LocalGrowth OS is a downloadable, localhost-only growth operations console. A bu
 
 It borrows the useful control-plane ideas from agent-management products—goals, roles, heartbeats, budgets, approvals, adapters, and auditability—while focusing on the daily work of marketing, lead research, and SEO.
 
+## Release tracks
+
+- **Stable v1:** AI-assisted social and blog drafting, exact-revision approval, media preparation, official publishing connectors, durable scheduling, and local auditability.
+- **Labs:** Lead intelligence and Local SEO stay compiled and locally usable behind `LOCALGROWTH_ENABLE_LABS=1`, but are not part of the v1 stability promise.
+- **Future updates:** richer media formats, metrics, discovery, SEO execution, plugins, backup tooling, and installers graduate independently after their acceptance criteria pass.
+
 ## Who it serves
 
 - Solo founders who need a repeatable content and lead workflow.

@@ -10,6 +10,7 @@ services:
       LOCALGROWTH_API_PORT: 8000
       LOCALGROWTH_DATA_DIR: /data
       LOCALGROWTH_TELEGRAM_POLL_TIMEOUT: ${LOCALGROWTH_TELEGRAM_POLL_TIMEOUT:-25}
+      LOCALGROWTH_ENABLE_LABS: ${LOCALGROWTH_ENABLE_LABS:-0}
     volumes:
       - localgrowth-data:/data
     extra_hosts:
