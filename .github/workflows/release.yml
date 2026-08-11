@@ -96,6 +96,27 @@ jobs:
       - name: Build the web console
         run: pnpm build
 
+      - name: Prepare OpenSSL for Windows ARM64
+        if: matrix.target == 'win32-arm64'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkgRoot) {
+            throw "VCPKG_INSTALLATION_ROOT is not available on this runner."
+          }
+
+          $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+          if (-not (Test-Path -LiteralPath $vcpkg)) {
+            throw "vcpkg.exe was not found at $vcpkg."
+          }
+
+          & $vcpkg install openssl:arm64-windows
+          if ($LASTEXITCODE -ne 0) {
+            throw "vcpkg failed to install OpenSSL for Windows ARM64."
+          }
+
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build and smoke-test the native API
         run: |
           pnpm backend:bundle
