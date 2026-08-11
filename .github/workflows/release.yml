@@ -110,7 +110,7 @@ jobs:
             throw "vcpkg.exe was not found at $vcpkg."
           }
 
-          & $vcpkg install openssl:arm64-windows
+          & $vcpkg install openssl:arm64-windows-static-md
           if ($LASTEXITCODE -ne 0) {
             throw "vcpkg failed to install OpenSSL for Windows ARM64."
           }
