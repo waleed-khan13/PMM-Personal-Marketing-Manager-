@@ -15,7 +15,7 @@ import httpx
 
 from app.errors import AppError, ExternalServiceError
 
-USER_AGENT_TOKEN = "LocalGrowthOS"
+ROBOTS_USER_AGENT = "LocalGrowthOS"
 USER_AGENT = "LocalGrowthOS/0.9 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
 MAX_PAGE_BYTES = 1_000_000
 MAX_PAGES = 4
@@ -293,7 +293,7 @@ async def _robots(client: httpx.AsyncClient, target_url: str) -> tuple[RobotFile
         parser.parse(content.decode("utf-8", errors="replace").splitlines())
     else:
         parser.parse([])
-    delay = parser.crawl_delay(USER_AGENT_TOKEN) or parser.crawl_delay("*") or 0.5
+    delay = parser.crawl_delay(ROBOTS_USER_AGENT) or parser.crawl_delay("*") or 0.5
     return parser, min(max(float(delay), 0.25), 5.0)
 
 
@@ -361,7 +361,7 @@ async def _crawl_website(value: str) -> dict[str, object]:
             if url in visited:
                 continue
             visited.add(url)
-            if not robots.can_fetch(USER_AGENT_TOKEN, url):
+            if not robots.can_fetch(ROBOTS_USER_AGENT, url):
                 if not pages:
                     raise AppError("Website robots.txt does not allow this page to be crawled.", 403)
                 continue

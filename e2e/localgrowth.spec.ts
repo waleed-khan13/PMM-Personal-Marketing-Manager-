@@ -5,6 +5,18 @@ import type { PublicAppState } from "../src/lib/app-types";
 
 const mockBaseUrl = `http://127.0.0.1:${process.env.LOCALGROWTH_E2E_MOCK_PORT ?? "4100"}`;
 
+test("rejects cross-origin requests at the localhost API proxy", async ({ request }) => {
+  const response = await request.post("/api/state", {
+    data: {},
+    headers: { Origin: "https://attacker.example" },
+  });
+  expect(response.status()).toBe(403);
+  expect(await response.json()).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("same-origin"),
+  });
+});
+
 async function navigate(page: Page, label: string, heading: string) {
   await expect(page.getByText(/LOCAL.*v\d+\.\d+\.\d+/)).toBeVisible({ timeout: 60_000 });
   await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: label }).click();

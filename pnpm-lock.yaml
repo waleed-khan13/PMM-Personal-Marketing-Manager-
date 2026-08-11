@@ -4,6 +4,10 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  hono: 4.13.1
+  nanoid: 3.3.18
+
 importers:
 
   .:
@@ -32,9 +36,6 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      shadcn:
-        specifier: ^4.16.1
-        version: 4.16.1(typescript@6.0.3)
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -70,8 +71,11 @@ importers:
         specifier: 16.3.0
         version: 16.3.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.5(jiti@2.7.0))(typescript@6.0.3)
       postcss:
-        specifier: ^8.5.25
-        version: 8.5.25
+        specifier: ^8.5.26
+        version: 8.5.26
+      shadcn:
+        specifier: ^4.16.2
+        version: 4.16.2(typescript@6.0.3)
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -338,7 +342,7 @@ packages:
     resolution: {integrity: sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: ^4
+      hono: 4.13.1
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -1729,8 +1733,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  hono@4.12.33:
-    resolution: {integrity: sha512-+SwvkaiJtxsiPjhy9LivY/1m7UsNqCJetM1BrZl9A5DkQhlbHQDU730mMiDPWjnoCYOM8Chf3WrCJw27kNTPFQ==}
+  hono@4.13.1:
+    resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
     engines: {node: '>=16.9.0'}
 
   http-errors@2.0.1:
@@ -2215,8 +2219,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanoid@3.3.16:
-    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2448,8 +2452,8 @@ packages:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.25:
-    resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
+  postcss@8.5.26:
+    resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   powershell-utils@0.1.0:
@@ -2606,8 +2610,8 @@ packages:
   setprototypeof@1.2.0:
     resolution: {integrity: sha512-E5LDX7Wrp85Kil5bhZv46j8jOeboKq5JMmYM3gVGdGH8xFpPWXUMsNrlODCrkoxMEeNi/XZIwuRvY4XNwYMJpw==}
 
-  shadcn@4.16.1:
-    resolution: {integrity: sha512-XLFzfNNIUPlUlyheFEzj0H4Vnhi9nI0nl3Nfgg8HYXW1FkUVhVT1X+mgmOUW8aWL5SeG0A+yJIV5fm3Hr9MVkQ==}
+  shadcn@4.16.2:
+    resolution: {integrity: sha512-M1AvZKFWcCzWRDoyApIqJMSLIpY8Ev4uBGuiPLSFmiTbixXhPmzotSTvLzFmBrfoIxG9aIg2dZOETblEaXGUnQ==}
     engines: {node: '>=20.18.1'}
     hasBin: true
 
@@ -3306,9 +3310,9 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@hono/node-server@2.0.12(hono@4.12.33)':
+  '@hono/node-server@2.0.12(hono@4.13.1)':
     dependencies:
-      hono: 4.12.33
+      hono: 4.13.1
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -3458,7 +3462,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.30.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 2.0.12(hono@4.12.33)
+      '@hono/node-server': 2.0.12(hono@4.13.1)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -3468,7 +3472,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1
       express-rate-limit: 8.6.1(express@5.2.1)
-      hono: 4.12.33
+      hono: 4.13.1
       jose: 6.2.6
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -3612,7 +3616,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
-      postcss: 8.5.25
+      postcss: 8.5.26
       tailwindcss: 4.3.3
 
   '@ts-morph/common@0.27.0':
@@ -4800,7 +4804,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  hono@4.12.33: {}
+  hono@4.13.1: {}
 
   http-errors@2.0.1:
     dependencies:
@@ -5204,7 +5208,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanoid@3.3.16: {}
+  nanoid@3.3.18: {}
 
   napi-postinstall@0.3.4: {}
 
@@ -5440,13 +5444,13 @@ snapshots:
 
   postcss@8.5.23:
     dependencies:
-      nanoid: 3.3.16
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postcss@8.5.25:
+  postcss@8.5.26:
     dependencies:
-      nanoid: 3.3.16
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -5645,7 +5649,7 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  shadcn@4.16.1(typescript@6.0.3):
+  shadcn@4.16.2(typescript@6.0.3):
     dependencies:
       '@babel/core': 7.29.7
       '@babel/parser': 7.29.8
@@ -5667,7 +5671,7 @@ snapshots:
       kleur: 4.1.5
       open: 11.0.0
       ora: 8.2.0
-      postcss: 8.5.25
+      postcss: 8.5.26
       postcss-selector-parser: 7.1.4
       prompts: 2.4.2
       recast: 0.23.19

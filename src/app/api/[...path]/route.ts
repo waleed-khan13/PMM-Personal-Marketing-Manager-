@@ -7,20 +7,89 @@ type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const API_UPSTREAM_HOSTS = new Set([...LOOPBACK_HOSTS, "api"]);
+
+function isLoopbackHost(hostname: string) {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
+function localApiBase(value: string) {
+  const url = new URL(value);
+  if (
+    url.protocol !== "http:"
+    || !API_UPSTREAM_HOSTS.has(url.hostname.toLowerCase())
+    || url.username
+    || url.password
+    || url.search
+    || url.hash
+  ) {
+    throw new Error(
+      "LOCALGROWTH_API_URL must target localhost or the bundled Docker API without credentials or query data.",
+    );
+  }
+  return url;
+}
+
+function isTrustedLocalRequest(request: Request) {
+  const sourceUrl = new URL(request.url);
+  const host = request.headers.get("host") || sourceUrl.host;
+  let browserOrigin: URL;
+  try {
+    browserOrigin = new URL(`${sourceUrl.protocol}//${host}`);
+  } catch {
+    return false;
+  }
+  if (!isLoopbackHost(browserOrigin.hostname)) return false;
+
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
+
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === browserOrigin.origin;
+  } catch {
+    return false;
+  }
+}
+
 async function proxyRequest(request: Request, context: RouteContext) {
+  if (!isTrustedLocalRequest(request)) {
+    return NextResponse.json(
+      { ok: false, error: "LocalGrowth OS only accepts same-origin requests on localhost." },
+      { status: 403 },
+    );
+  }
+
   const { path } = await context.params;
   const configuredBase = process.env.LOCALGROWTH_API_URL || "http://127.0.0.1:8000";
-  const baseUrl = new URL(configuredBase);
   const sourceUrl = new URL(request.url);
-  const targetUrl = new URL(`/api/${path.map(encodeURIComponent).join("/")}${sourceUrl.search}`, baseUrl);
   const headers = new Headers(request.headers);
 
-  for (const header of ["connection", "content-length", "host", "transfer-encoding"]) {
+  for (const header of [
+    "connection",
+    "content-length",
+    "cookie",
+    "host",
+    "origin",
+    "proxy-authorization",
+    "referer",
+    "transfer-encoding",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+  ]) {
     headers.delete(header);
   }
   headers.set("x-localgrowth-proxy", "nextjs");
 
   try {
+    const baseUrl = localApiBase(configuredBase);
+    const targetUrl = new URL(
+      `/api/${path.map(encodeURIComponent).join("/")}${sourceUrl.search}`,
+      baseUrl,
+    );
     const body = ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer();
     const upstream = await fetch(targetUrl, {
       method: request.method,

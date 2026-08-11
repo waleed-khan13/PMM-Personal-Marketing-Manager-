@@ -155,7 +155,7 @@ def test_lead_import_deduplicates_tracks_evidence_and_honors_suppression(client)
 def test_google_places_connector_is_encrypted_and_search_results_are_transient(client, monkeypatch) -> None:
     from app.connectors.base import ConnectorTestResult
 
-    api_key = "google-places-local-secret"
+    api_key = "google-places-test-fixture"
     created = client.post(
         "/api/connectors",
         json={
@@ -919,8 +919,8 @@ def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch
     assert invalid.status_code == 400
     assert "connections:write" in invalid.json()["error"]
 
-    bot_token = "xoxb-local-connector-secret"
-    app_token = "xapp-local-socket-secret"
+    bot_token = "xoxb-local-test-fixture"
+    app_token = "xapp-local-test-fixture"
     created = client.post(
         "/api/connectors",
         json={

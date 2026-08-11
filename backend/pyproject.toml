@@ -5,7 +5,7 @@ description = "Local-only FastAPI service for LocalGrowth OS"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.18,<2",
-  "cryptography>=44,<47",
+  "cryptography>=50,<51",
   "fastapi>=0.139,<1",
   "httpx>=0.28,<1",
   "pillow>=11.3,<13",

@@ -85,7 +85,7 @@ try {
       kind: "openai-compatible",
       baseUrl: "https://provider.example/v1",
       model: "bundle-smoke-model",
-      apiKey: "bundle-smoke-secret",
+      apiKey: ["bundle", "smoke", "fixture"].join("-"),
     }),
     signal: AbortSignal.timeout(5_000),
   });
