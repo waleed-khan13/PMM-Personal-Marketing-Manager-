@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  BookOpenCheck,
   Bot,
   Check,
   ChevronRight,
@@ -63,6 +64,7 @@ import {
   type WhatsAppConnectorForm,
 } from "@/components/whatsapp-connector-card";
 import { SeoWorkspace } from "@/components/seo-workspace";
+import { SetupGuide } from "@/components/setup-guide";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,7 +128,7 @@ import {
   type WordPressConnectorForm,
 } from "@/components/wordpress-connector-card";
 
-type ViewId = "command" | "create" | "queue" | "media" | "leads" | "seo" | "scheduler" | "integrations" | "activity";
+type ViewId = "command" | "guide" | "create" | "queue" | "media" | "leads" | "seo" | "scheduler" | "integrations" | "activity";
 type QueueFilter = "all" | PostStatus;
 
 type StateResponse = {
@@ -143,6 +145,7 @@ type NavItem = {
 
 const navigation: NavItem[] = [
   { id: "command", label: "Command", icon: LayoutDashboard },
+  { id: "guide", label: "Setup guide", icon: BookOpenCheck },
   { id: "create", label: "Create content", icon: Sparkles },
   { id: "queue", label: "Approval queue", icon: Inbox },
   { id: "media", label: "Media library", icon: Images },
@@ -158,6 +161,11 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
     eyebrow: "Local control plane",
     title: "Growth command",
     description: "Live status for your AI content and human approval workflow.",
+  },
+  guide: {
+    eyebrow: "Guided local setup",
+    title: "Setup guide",
+    description: "Connect the minimum required services and complete a safe first publishing workflow.",
   },
   create: {
     eyebrow: "AI content engine",
@@ -1667,6 +1675,12 @@ export function GrowthConsole() {
             <h1 className="mt-1 truncate text-sm font-semibold text-zinc-100 sm:text-base">{meta.title}</h1>
           </div>
           <div className="ml-3 flex items-center gap-2">
+            <Button aria-label="Open setup guide" className="md:hidden" onClick={() => navigate("guide")} size="icon" variant="ghost">
+              <BookOpenCheck className="size-4" />
+            </Button>
+            <Button className="hidden md:inline-flex" onClick={() => navigate("guide")} variant="outline">
+              <BookOpenCheck /> Setup guide
+            </Button>
             <Button className="hidden sm:inline-flex" onClick={() => navigate("create")}>
               <Plus /> New content
             </Button>
@@ -1692,6 +1706,16 @@ export function GrowthConsole() {
                 title="Local API is not responding"
               />
             </Card>
+          ) : null}
+
+          {!loading && appState && activeView === "guide" ? (
+            <SetupGuide
+              onCreateContent={() => navigate("create")}
+              onOpenConnections={() => navigate("integrations")}
+              onOpenQueue={() => navigate("queue")}
+              onOpenScheduler={() => navigate("scheduler")}
+              state={appState}
+            />
           ) : null}
 
           {!loading && appState && activeView === "command" ? (

@@ -11,7 +11,6 @@ export default defineConfig([
     "build/**",
     "output/**",
     "release/**",
-    "graphify-out/**",
     "packaging/web-runtime/node_modules/**",
     "backend/**",
     "next-env.d.ts",

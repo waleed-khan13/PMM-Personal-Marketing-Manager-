@@ -25,7 +25,6 @@
 /playwright-report/
 /output/
 /.playwright-cli/
-/graphify-out/
 
 # Python backend
 /backend/.venv/

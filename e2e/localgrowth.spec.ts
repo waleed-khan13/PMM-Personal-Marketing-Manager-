@@ -54,6 +54,11 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   await expect(primaryNavigation.getByRole("button", { name: "Lead intelligence" })).toHaveCount(0);
   await expect(primaryNavigation.getByRole("button", { name: "Local SEO lab" })).toHaveCount(0);
 
+  await navigate(page, "Setup guide", "Setup guide");
+  await expect(page.getByRole("heading", { level: 2, name: "Set up your first approved post" })).toBeVisible();
+  await expect(page.getByText("Milestones ready")).toBeVisible();
+  await expect(page.getByText("How the safe workflow works")).toBeVisible();
+
   const releaseStateResponse = await page.request.get("/api/state");
   expect(releaseStateResponse.ok()).toBeTruthy();
   const releaseState = (await releaseStateResponse.json()) as PublicAppState;
@@ -687,6 +692,9 @@ test("passes automated accessibility checks in core workflow views", async ({ pa
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
   await expectNoAccessibilityViolations(page, testInfo, "growth-command");
+
+  await navigate(page, "Setup guide", "Setup guide");
+  await expectNoAccessibilityViolations(page, testInfo, "setup-guide");
 
   await navigate(page, "Integrations", "Connections");
   await expectNoAccessibilityViolations(page, testInfo, "connections");
