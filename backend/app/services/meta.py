@@ -61,7 +61,7 @@ def validate_meta_page_id(value: str) -> str:
 
 def _graph_base_url() -> str:
     return validate_meta_graph_base_url(
-        os.getenv("LOCALGROWTH_META_GRAPH_BASE_URL", DEFAULT_GRAPH_BASE_URL)
+        os.getenv("SOCIUM_META_GRAPH_BASE_URL", DEFAULT_GRAPH_BASE_URL)
     )
 
 

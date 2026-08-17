@@ -1,6 +1,6 @@
-# LocalGrowth OS v1.0 release contract
+# Socium v1.0 release contract
 
-Version 1.0 is the stable, localhost-only social publishing edition. Its promise is deliberately narrow: an operator can connect an AI provider, generate a channel-aware draft, review an exact revision, approve it, and publish immediately or through the durable local scheduler without a LocalGrowth cloud account.
+Version 1.0 is the stable, localhost-only social publishing edition. Its promise is deliberately narrow: an operator can connect an AI provider, generate a channel-aware draft, review an exact revision, approve it, and publish immediately or through the durable local scheduler without a Socium cloud account.
 
 ## Stable v1 capabilities
 
@@ -19,7 +19,7 @@ Version 1.0 is the stable, localhost-only social publishing edition. Its promise
 - Instagram carousel and Reels publishing are not included.
 - Instagram publishing needs a public HTTPS image URL because Meta fetches the asset; localhost media URLs cannot be fetched by Meta.
 - WhatsApp interactive approvals are not included because Meta requires a reachable public HTTPS webhook.
-- LinkedIn Company publishing depends on LinkedIn product approval, scopes, and Page permissions that LocalGrowth cannot grant.
+- LinkedIn Company publishing depends on LinkedIn product approval, scopes, and Page permissions that Socium cannot grant.
 - The computer and application must remain running for local listeners and scheduled work.
 - Signed desktop packages, background-service integration, automatic backup/restore, normalized engagement analytics, and signed plugins remain roadmap work.
 
@@ -28,7 +28,7 @@ Version 1.0 is the stable, localhost-only social publishing edition. Its promise
 Lead intelligence and Local SEO are retained as opt-in previews, hidden by default. They do not share the v1 stability guarantee. To test them, set the environment variable below before starting the app:
 
 ```bash
-LOCALGROWTH_ENABLE_LABS=1
+SOCIUM_ENABLE_LABS=1
 ```
 
 Labs never enable an HTML scraper for LinkedIn or Google Maps. Discovery uses permitted imports, the official Google Places API, and robots-aware public website crawling.
@@ -49,7 +49,7 @@ A v1 release candidate is acceptable only when all of the following pass from a 
 1. Run the complete acceptance suite and inspect generated browser artifacts.
 2. Run the native workflow manually against `main` with `publish` disabled; every supported OS/CPU bundle must pass on its native runner.
 3. Create a `vX.Y.Z` tag whose root, CLI, backend, and portable-runtime versions match.
-4. Let the tag-triggered workflow rebuild the native assets and publish the archives, SHA-256 files, update manifest, and `localgrowth-os` npm CLI.
+4. Let the tag-triggered workflow rebuild the native assets and publish the archives, SHA-256 files, update manifest, and `socium` npm CLI.
 5. Track Labs graduation and signed desktop packaging in [ROADMAP.md](ROADMAP.md) rather than expanding the v1 contract after tagging.
 
 The exact maintainer procedure and first npm publication prerequisite are documented in [RELEASING.md](RELEASING.md).

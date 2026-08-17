@@ -78,7 +78,7 @@ async def send_approval_message(
             "blocks": [
                 {
                     "type": "header",
-                    "text": {"type": "plain_text", "text": "LocalGrowth approval requested"},
+                    "text": {"type": "plain_text", "text": "Socium approval requested"},
                 },
                 {
                     "type": "section",
@@ -98,20 +98,20 @@ async def send_approval_message(
                 },
                 {
                     "type": "actions",
-                    "block_id": f"localgrowth_approval_{post['id']}_{post['revision']}",
+                    "block_id": f"socium_approval_{post['id']}_{post['revision']}",
                     "elements": [
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Approve"},
                             "style": "primary",
-                            "action_id": "localgrowth_approve",
+                            "action_id": "socium_approve",
                             "value": f"lg:approve:{post['id']}:{post['revision']}",
                         },
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "Reject"},
                             "style": "danger",
-                            "action_id": "localgrowth_reject",
+                            "action_id": "socium_reject",
                             "value": f"lg:reject:{post['id']}:{post['revision']}",
                         },
                     ],

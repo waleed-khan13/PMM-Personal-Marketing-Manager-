@@ -5,9 +5,9 @@ import path from "node:path";
 import process from "node:process";
 
 const projectRoot = process.cwd();
-const webPort = Number(process.env.LOCALGROWTH_E2E_WEB_PORT ?? "3100");
-const apiPort = Number(process.env.LOCALGROWTH_E2E_API_PORT ?? "8100");
-const mockPort = Number(process.env.LOCALGROWTH_E2E_MOCK_PORT ?? "4100");
+const webPort = Number(process.env.SOCIUM_E2E_WEB_PORT ?? "3100");
+const apiPort = Number(process.env.SOCIUM_E2E_API_PORT ?? "8100");
+const mockPort = Number(process.env.SOCIUM_E2E_MOCK_PORT ?? "4100");
 const runtimeDirectory = path.join(projectRoot, "output", "playwright", "runtime", String(process.pid));
 const children = new Set();
 let stopping = false;
@@ -123,7 +123,7 @@ const mockServer = createServer(async (request, response) => {
                   ? ["#InstagramForBusiness", "#HumanReviewed"]
                   : facebookDraft
                     ? ["#LocalBusiness", "#FacebookMarketing"]
-                    : ["#LocalGrowth", "#SmallBusiness"],
+                    : ["#Socium", "#SmallBusiness"],
                 rationale: whatsappDraft
                   ? "An approved template notifies the reviewer without exposing a localhost webhook."
                   : linkedinOrganizationDraft
@@ -445,16 +445,16 @@ launch(
   "uv",
   ["run", "--project", "backend", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(apiPort)],
   {
-    LOCALGROWTH_API_HOST: "127.0.0.1",
-    LOCALGROWTH_API_PORT: String(apiPort),
-    LOCALGROWTH_DATA_DIR: runtimeDirectory,
-    LOCALGROWTH_SCHEDULER_INTERVAL: "0.25",
-    LOCALGROWTH_SLACK_SOCKET_MODE: "0",
-    LOCALGROWTH_ENABLE_LABS: "0",
-    LOCALGROWTH_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
-    LOCALGROWTH_WHATSAPP_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/whatsapp`,
-    LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,
-    LOCALGROWTH_LINKEDIN_API_BASE_URL: `http://127.0.0.1:${mockPort}/linkedin`,
+    SOCIUM_API_HOST: "127.0.0.1",
+    SOCIUM_API_PORT: String(apiPort),
+    SOCIUM_DATA_DIR: runtimeDirectory,
+    SOCIUM_SCHEDULER_INTERVAL: "0.25",
+    SOCIUM_SLACK_SOCKET_MODE: "0",
+    SOCIUM_ENABLE_LABS: "0",
+    SOCIUM_META_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/meta`,
+    SOCIUM_WHATSAPP_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/whatsapp`,
+    SOCIUM_INSTAGRAM_GRAPH_BASE_URL: `http://127.0.0.1:${mockPort}/instagram`,
+    SOCIUM_LINKEDIN_API_BASE_URL: `http://127.0.0.1:${mockPort}/linkedin`,
   },
 );
 
@@ -472,9 +472,9 @@ launch(
     "--webpack",
   ],
   {
-    LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
+    SOCIUM_API_URL: `http://127.0.0.1:${apiPort}`,
   },
 );
 
-console.log(`[e2e] LocalGrowth: http://127.0.0.1:${webPort}`);
+console.log(`[e2e] Socium: http://127.0.0.1:${webPort}`);
 console.log(`[e2e] External service mock: http://127.0.0.1:${mockPort}`);

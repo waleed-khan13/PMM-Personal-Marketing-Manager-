@@ -159,7 +159,7 @@ const navigation: NavItem[] = [
 
 const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: string }> = {
   command: {
-    eyebrow: "Local control plane",
+    eyebrow: "Personal social manager",
     title: "Growth command",
     description: "Live status for your AI content and human approval workflow.",
   },
@@ -181,7 +181,7 @@ const pageMeta: Record<ViewId, { eyebrow: string; title: string; description: st
   media: {
     eyebrow: "Local creative vault",
     title: "Media library",
-    description: "Verify, store, transform, and reuse campaign images without uploading them to LocalGrowth cloud.",
+    description: "Verify, store, transform, and reuse campaign images without uploading them to Socium cloud.",
   },
   leads: {
     eyebrow: "Permission-aware intelligence",
@@ -291,7 +291,7 @@ function RuntimeBadge({ state }: { state: PublicAppState | null }) {
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-50" />
         <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
       </span>
-      LOCAL SOCIAL · {state ? `v${state.runtime.version}` : "CONNECTING"}
+      SOCIUM LOCAL · {state ? `v${state.runtime.version}` : "CONNECTING"}
     </div>
   );
 }
@@ -622,7 +622,7 @@ export function GrowthConsole() {
     phoneNumberId: "",
     recipientPhone: "",
     apiVersion: "v25.0",
-    templateName: "localgrowth_draft_review",
+    templateName: "socium_draft_review",
     templateLanguage: "en_US",
     accessToken: "",
     enabled: true,
@@ -738,7 +738,7 @@ export function GrowthConsole() {
             phoneNumberId: String(whatsapp.config.phone_number_id ?? ""),
             recipientPhone: String(whatsapp.config.recipient_phone ?? ""),
             apiVersion: String(whatsapp.config.api_version ?? "v25.0"),
-            templateName: String(whatsapp.config.template_name ?? "localgrowth_draft_review"),
+            templateName: String(whatsapp.config.template_name ?? "socium_draft_review"),
             templateLanguage: String(whatsapp.config.template_language ?? "en_US"),
             accessToken: "",
             enabled: whatsapp.enabled,
@@ -1603,7 +1603,7 @@ export function GrowthConsole() {
           phoneNumberId: "",
           recipientPhone: "",
           apiVersion: "v25.0",
-          templateName: "localgrowth_draft_review",
+          templateName: "socium_draft_review",
           templateLanguage: "en_US",
           accessToken: "",
           enabled: true,

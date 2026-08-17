@@ -1,13 +1,13 @@
-# Installing LocalGrowth OS
+# Installing Socium
 
-LocalGrowth OS runs entirely on your computer. The normal installation needs Node.js 20.9 or newer; it does not need Docker, Python, uv, pnpm, or a source checkout.
+Socium runs entirely on your computer. The normal installation needs Node.js 20.9 or newer; it does not need Docker, Python, uv, pnpm, or a source checkout.
 
 ## Install and start
 
 Run the same command in PowerShell, Terminal, or a Linux shell:
 
 ```bash
-npx localgrowth-os onboard
+npx socium onboard
 ```
 
 The CLI detects the operating system and CPU, downloads the matching GitHub Release archive over HTTPS, verifies its published SHA-256 checksum, installs it, starts FastAPI and Next.js on loopback, and opens `http://127.0.0.1:3000`. The first start creates SQLite, applies migrations, and generates the local encryption key.
@@ -17,10 +17,10 @@ Supported release targets are Windows x64/ARM64, macOS Intel/Apple silicon, and 
 ## Lifecycle commands
 
 ```bash
-npx localgrowth-os start
-npx localgrowth-os doctor
-npx localgrowth-os update
-npx localgrowth-os uninstall --yes
+npx socium start
+npx socium doctor
+npx socium update
+npx socium uninstall --yes
 ```
 
 `start` reopens an installed runtime. `doctor` checks Node, installation metadata, native API and web files, the data directory, and default ports. `update` verifies and activates the latest runtime without replacing local data.
@@ -28,7 +28,7 @@ npx localgrowth-os uninstall --yes
 Normal uninstall removes downloaded runtimes but deliberately preserves business data. Permanent deletion is explicit:
 
 ```bash
-npx localgrowth-os uninstall --yes --purge-data
+npx socium uninstall --yes --purge-data
 ```
 
 That command removes the SQLite database, `master.key`, media, and exports. Back up the whole `data` directory first; the database and its matching encryption key must stay together.
@@ -37,24 +37,24 @@ That command removes the SQLite database, `master.key`, media, and exports. Back
 
 | Platform | Application root |
 | --- | --- |
-| Windows | `%LOCALAPPDATA%\LocalGrowthOS` |
-| macOS | `~/Library/Application Support/LocalGrowthOS` |
-| Linux | `$XDG_DATA_HOME/localgrowth-os` or `~/.local/share/localgrowth-os` |
+| Windows | `%LOCALAPPDATA%\Socium` |
+| macOS | `~/Library/Application Support/Socium` |
+| Linux | `$XDG_DATA_HOME/socium` or `~/.local/share/socium` |
 
-The root contains `runtimes/<version>/<target>` for replaceable program files and `data` for durable local state. Set `LOCALGROWTH_HOME` before every CLI command only when an advanced or portable location is required.
+The root contains `runtimes/<version>/<target>` for replaceable program files and `data` for durable local state. Set `SOCIUM_HOME` before every CLI command only when an advanced or portable location is required.
 
 ## Ports and Labs
 
 The console and internal API default to `127.0.0.1:3000` and `127.0.0.1:8000`. Both remain loopback-only. If either port is occupied:
 
 ```bash
-npx localgrowth-os start --port 3100 --api-port 8100
+npx socium start --port 3100 --api-port 8100
 ```
 
-Lead intelligence and Local SEO remain preview workspaces in v1. Start them explicitly with `npx localgrowth-os start --labs`.
+Lead intelligence and Local SEO remain preview workspaces in v1. Start them explicitly with `npx socium start --labs`.
 
 ## Release verification
 
-Every GitHub Release includes the platform archive, a matching `.sha256` file, and `localgrowth-manifest.json`. The CLI verifies the manifest checksum before extraction and validates the version/target metadata inside the archive. It refuses plain HTTP release downloads by default.
+Every GitHub Release includes the platform archive, a matching `.sha256` file, and `socium-manifest.json`. The CLI verifies the manifest checksum before extraction and validates the version/target metadata inside the archive. It refuses plain HTTP release downloads by default.
 
 Docker Compose remains available as an optional advanced deployment path. It is not used by the one-command installer.

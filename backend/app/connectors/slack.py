@@ -20,7 +20,7 @@ class SlackAdapter:
                 label="Approval channel ID",
                 required=True,
                 placeholder="C0123456789",
-                help_text="The channel where LocalGrowth will send approval requests.",
+                help_text="The channel where Socium will send approval requests.",
             ),
         ),
         secret_fields=(

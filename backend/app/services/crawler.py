@@ -15,8 +15,8 @@ import httpx
 
 from app.errors import AppError, ExternalServiceError
 
-ROBOTS_USER_AGENT = "LocalGrowthOS"
-USER_AGENT = "LocalGrowthOS/0.9 (+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-)"
+ROBOTS_USER_AGENT = "Socium"
+USER_AGENT = "Socium/0.9 (+https://github.com/waleed-khan13/socium)"
 MAX_PAGE_BYTES = 1_000_000
 MAX_PAGES = 4
 CRAWL_LOCK = asyncio.Lock()

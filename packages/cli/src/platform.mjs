@@ -11,7 +11,7 @@ export function releaseTarget(platform = process.platform, architecture = proces
   const target = `${platform}-${architecture}`;
   if (!supportedTargets.has(target)) {
     throw new Error(
-      `LocalGrowth OS does not have a release bundle for ${platform}/${architecture}. ` +
+      `Socium does not have a release bundle for ${platform}/${architecture}. ` +
         `Supported targets: ${[...supportedTargets].join(", ")}.`,
     );
   }
@@ -19,7 +19,7 @@ export function releaseTarget(platform = process.platform, architecture = proces
 }
 
 export function backendFileName(platform = process.platform) {
-  return platform === "win32" ? "localgrowth-api.exe" : "localgrowth-api";
+  return platform === "win32" ? "socium-api.exe" : "socium-api";
 }
 
 export function supportedReleaseTargets() {

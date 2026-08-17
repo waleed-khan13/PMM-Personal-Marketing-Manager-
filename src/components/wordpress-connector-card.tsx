@@ -251,7 +251,7 @@ export function WordPressConnectorCard({
           </div>
           <div className="rounded-md border border-zinc-900 p-3">
             <div className="flex items-center gap-2 text-xs text-zinc-300"><FileText className="size-3.5" /> posts:write</div>
-            <p className="mt-1 text-[11px] leading-5 text-zinc-600">LocalGrowth capability scope required by this adapter.</p>
+            <p className="mt-1 text-[11px] leading-5 text-zinc-600">Socium capability scope required by this adapter.</p>
           </div>
           {account?.lastVerifiedAt ? <p className="font-mono text-[10px] text-zinc-600">Last verified {formatDate(account.lastVerifiedAt)}</p> : null}
           <a

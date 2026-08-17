@@ -5,9 +5,9 @@ import path from "node:path";
 const projectRoot = process.cwd();
 const standaloneRoot = path.join(projectRoot, ".next", "standalone");
 const standaloneNextRoot = path.join(standaloneRoot, ".next");
-const apiPort = process.env.LOCALGROWTH_API_PORT || "8000";
+const apiPort = process.env.SOCIUM_API_PORT || "8000";
 const webPort = process.env.PORT || "3000";
-const dataDirectory = process.env.LOCALGROWTH_DATA_DIR || path.join(projectRoot, "data");
+const dataDirectory = process.env.SOCIUM_DATA_DIR || path.join(projectRoot, "data");
 const children = new Set();
 let stopping = false;
 
@@ -58,7 +58,7 @@ async function waitForApi(url, child) {
 }
 
 if (!(await exists(path.join(standaloneRoot, "server.js")))) {
-  console.error("LocalGrowth OS is not built yet. Run `pnpm build` before `pnpm start`.");
+  console.error("Socium is not built yet. Run `pnpm build` before `pnpm start`.");
   process.exit(1);
 }
 
@@ -84,9 +84,9 @@ const api = launch(
   "uv",
   ["run", "--project", "backend", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", apiPort],
   {
-    LOCALGROWTH_API_HOST: "127.0.0.1",
-    LOCALGROWTH_API_PORT: apiPort,
-    LOCALGROWTH_DATA_DIR: dataDirectory,
+    SOCIUM_API_HOST: "127.0.0.1",
+    SOCIUM_API_PORT: apiPort,
+    SOCIUM_DATA_DIR: dataDirectory,
   },
 );
 
@@ -100,5 +100,5 @@ try {
 launch(process.execPath, [path.join(standaloneRoot, "server.js")], {
   HOSTNAME: "127.0.0.1",
   PORT: webPort,
-  LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
+  SOCIUM_API_URL: `http://127.0.0.1:${apiPort}`,
 });

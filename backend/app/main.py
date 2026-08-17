@@ -176,8 +176,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="LocalGrowth OS Local API",
-    description="Loopback-only API for the downloadable LocalGrowth OS application.",
+    title="Socium Local API",
+    description="Loopback-only API for the downloadable Socium application.",
     version=__version__,
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -215,7 +215,7 @@ def state_response() -> dict[str, Any]:
 def health() -> dict[str, Any]:
     return {
         "status": "ok",
-        "service": "localgrowth-api",
+        "service": "socium-api",
         "version": __version__,
         "mode": "local_only",
         "database": "sqlite",

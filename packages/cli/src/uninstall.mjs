@@ -1,8 +1,8 @@
 import { rm } from "node:fs/promises";
 
-import { localgrowthPaths } from "./paths.mjs";
+import { sociumPaths } from "./paths.mjs";
 
-export async function uninstall({ paths = localgrowthPaths(), purgeData = false, confirmed = false } = {}) {
+export async function uninstall({ paths = sociumPaths(), purgeData = false, confirmed = false } = {}) {
   if (!confirmed) {
     throw new Error("Uninstall requires --yes. Local business data is preserved unless --purge-data is also supplied.");
   }

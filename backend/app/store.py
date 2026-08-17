@@ -143,9 +143,9 @@ def _import_legacy_json(session: Session, path: Path) -> None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeError("The existing localgrowth.json store could not be imported.") from error
+        raise RuntimeError("The existing socium.json store could not be imported.") from error
     if not isinstance(payload, dict):
-        raise TypeError("The existing localgrowth.json store has an invalid shape.")
+        raise TypeError("The existing socium.json store has an invalid shape.")
 
     workspace = payload.get("workspace") if isinstance(payload.get("workspace"), dict) else {}
     provider = payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
@@ -758,7 +758,7 @@ def process_telegram_update(update: dict[str, Any]) -> tuple[str, str] | None:
         callback_id = str(callback.get("id") or "")
         data = callback["data"].split(":")
         if len(data) != 4 or data[0] != "lg" or data[1] not in {"approve", "reject"}:
-            return (callback_id, "Unknown LocalGrowth action.") if callback_id else None
+            return (callback_id, "Unknown Socium action.") if callback_id else None
         _, decision, post_id, raw_revision = data
         try:
             revision = int(raw_revision)
@@ -770,7 +770,7 @@ def process_telegram_update(update: dict[str, Any]) -> tuple[str, str] | None:
         callback_chat = chat.get("id") if isinstance(chat, dict) else None
         if telegram.chat_id.lstrip("-").isdigit() and str(callback_chat) != telegram.chat_id:
             return (
-                (callback_id, "This chat is not authorized for LocalGrowth approvals.")
+                (callback_id, "This chat is not authorized for Socium approvals.")
                 if callback_id
                 else None
             )

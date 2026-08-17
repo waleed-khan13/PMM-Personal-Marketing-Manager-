@@ -1,6 +1,6 @@
 # Roadmap
 
-LocalGrowth OS is a downloadable, open-source, localhost-only application. It is not a hosted SaaS product. Every core feature must work with data stored on the operator's own computer, and the application binds to loopback by default.
+Socium is a downloadable, open-source, localhost-only application. It is not a hosted SaaS product. Every core feature must work with data stored on the operator's own computer, and the application binds to loopback by default.
 
 ## v1.0 release line
 
@@ -28,7 +28,7 @@ The first stable release is intentionally social-first. The default navigation c
 - [x] Native launcher that starts the API, worker, and web console together.
 - [x] Backend unit/integration tests and a real localhost browser workflow suite.
 
-**Acceptance:** a fresh install starts locally, connects Ollama or an API provider, generates a draft, receives a Telegram decision through long polling, publishes exactly once, survives a restart, and exposes the complete audit trail without any hosted LocalGrowth service.
+**Acceptance:** a fresh install starts locally, connects Ollama or an API provider, generates a draft, receives a Telegram decision through long polling, publishes exactly once, survives a restart, and exposes the complete audit trail without any hosted Socium service.
 
 ## Milestone 2 — social publishing (v1 stable core)
 

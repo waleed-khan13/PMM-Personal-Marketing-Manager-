@@ -245,7 +245,7 @@ export function LinkedInOrganizationConnectorCard({
             <LockKeyhole className="mt-0.5 size-4 shrink-0 text-zinc-500" />
             <div>
               <p className="text-xs font-medium text-zinc-300">Official API, access gated</p>
-              <p className="mt-1 text-[11px] leading-5 text-zinc-600">Your LinkedIn developer app must have organization products and scopes approved. LocalGrowth cannot grant them.</p>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-600">Your LinkedIn developer app must have organization products and scopes approved. Socium cannot grant them.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">

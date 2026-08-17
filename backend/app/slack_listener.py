@@ -46,7 +46,7 @@ def process_slack_interaction(
             item
             for item in actions
             if isinstance(item, dict)
-            and item.get("action_id") in {"localgrowth_approve", "localgrowth_reject"}
+            and item.get("action_id") in {"socium_approve", "socium_reject"}
         ),
         None,
     )
@@ -56,13 +56,13 @@ def process_slack_interaction(
         return SlackInteractionResult(
             channel_id=channel_id,
             user_id=user_id,
-            message="This channel is not authorized for LocalGrowth approvals.",
+            message="This channel is not authorized for Socium approvals.",
         )
 
     raw_value = str(action.get("value") or "")
     parts = raw_value.split(":")
     if len(parts) != 4 or parts[0] != "lg" or parts[1] not in {"approve", "reject"}:
-        return SlackInteractionResult(channel_id, user_id, "Unknown LocalGrowth approval action.")
+        return SlackInteractionResult(channel_id, user_id, "Unknown Socium approval action.")
     _, decision, post_id, raw_revision = parts
     try:
         revision = int(raw_revision)

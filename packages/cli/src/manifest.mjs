@@ -11,7 +11,7 @@ function isHttpUrl(value) {
 export function assertSafeHttpUrl(value) {
   const url = new URL(value);
   if (url.protocol === "https:") return;
-  if (url.protocol === "http:" && process.env.LOCALGROWTH_ALLOW_INSECURE_DOWNLOADS === "1") return;
+  if (url.protocol === "http:" && process.env.SOCIUM_ALLOW_INSECURE_DOWNLOADS === "1") return;
   throw new Error(`Refusing insecure release URL: ${value}`);
 }
 
@@ -19,7 +19,7 @@ export async function readJsonSource(source) {
   if (isHttpUrl(source)) {
     assertSafeHttpUrl(source);
     const response = await fetch(source, {
-      headers: { "user-agent": "localgrowth-os-cli" },
+      headers: { "user-agent": "socium-cli" },
       redirect: "follow",
       signal: AbortSignal.timeout(30_000),
     });
@@ -48,7 +48,7 @@ export function validateManifest(manifest, target) {
   if (manifest.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
     throw new Error(`Unsupported release manifest schema: ${manifest.schemaVersion ?? "missing"}.`);
   }
-  if (manifest.product !== "localgrowth-os") {
+  if (manifest.product !== "socium") {
     throw new Error(`Release manifest is for an unexpected product: ${manifest.product ?? "missing"}.`);
   }
   if (

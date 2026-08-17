@@ -30,7 +30,7 @@ executable = EXE(
     analysis.binaries,
     analysis.datas,
     [],
-    name="localgrowth-api",
+    name="socium-api",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -1,4 +1,4 @@
-name: localgrowth-os
+name: socium
 
 services:
   api:
@@ -6,13 +6,13 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      LOCALGROWTH_API_HOST: 0.0.0.0
-      LOCALGROWTH_API_PORT: 8000
-      LOCALGROWTH_DATA_DIR: /data
-      LOCALGROWTH_TELEGRAM_POLL_TIMEOUT: ${LOCALGROWTH_TELEGRAM_POLL_TIMEOUT:-25}
-      LOCALGROWTH_ENABLE_LABS: ${LOCALGROWTH_ENABLE_LABS:-0}
+      SOCIUM_API_HOST: 0.0.0.0
+      SOCIUM_API_PORT: 8000
+      SOCIUM_DATA_DIR: /data
+      SOCIUM_TELEGRAM_POLL_TIMEOUT: ${SOCIUM_TELEGRAM_POLL_TIMEOUT:-25}
+      SOCIUM_ENABLE_LABS: ${SOCIUM_ENABLE_LABS:-0}
     volumes:
-      - localgrowth-data:/data
+      - socium-data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      LOCALGROWTH_API_URL: http://api:8000
+      SOCIUM_API_URL: http://api:8000
     depends_on:
       api:
         condition: service_healthy
@@ -37,4 +37,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  localgrowth-data:
+  socium-data:

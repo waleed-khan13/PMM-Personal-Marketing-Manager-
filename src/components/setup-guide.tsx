@@ -41,10 +41,10 @@ type GuideStep = {
 };
 
 const runtimeCommands = [
-  { command: "npx localgrowth-os start", label: "Start again" },
-  { command: "npx localgrowth-os doctor", label: "Check the installation" },
-  { command: "npx localgrowth-os update", label: "Install an available update" },
-  { command: "npx localgrowth-os uninstall --yes", label: "Remove runtime, keep local data" },
+  { command: "npx socium start", label: "Start again" },
+  { command: "npx socium doctor", label: "Check the installation" },
+  { command: "npx socium update", label: "Install an available update" },
+  { command: "npx socium uninstall --yes", label: "Remove runtime, keep local data" },
 ];
 
 function GuideStepCard({ step, number }: { step: GuideStep; number: number }) {

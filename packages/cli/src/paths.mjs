@@ -1,28 +1,28 @@
 import os from "node:os";
 import path from "node:path";
 
-export function localgrowthRoot({
+export function sociumRoot({
   environment = process.env,
   platform = process.platform,
   homeDirectory = os.homedir(),
 } = {}) {
-  if (environment.LOCALGROWTH_HOME?.trim()) {
-    return path.resolve(environment.LOCALGROWTH_HOME.trim());
+  if (environment.SOCIUM_HOME?.trim()) {
+    return path.resolve(environment.SOCIUM_HOME.trim());
   }
 
   if (platform === "win32") {
     const localAppData = environment.LOCALAPPDATA?.trim();
-    return path.resolve(localAppData || path.join(homeDirectory, "AppData", "Local"), "LocalGrowthOS");
+    return path.resolve(localAppData || path.join(homeDirectory, "AppData", "Local"), "Socium");
   }
   if (platform === "darwin") {
-    return path.resolve(homeDirectory, "Library", "Application Support", "LocalGrowthOS");
+    return path.resolve(homeDirectory, "Library", "Application Support", "Socium");
   }
   const xdgDataHome = environment.XDG_DATA_HOME?.trim();
-  return path.resolve(xdgDataHome || path.join(homeDirectory, ".local", "share"), "localgrowth-os");
+  return path.resolve(xdgDataHome || path.join(homeDirectory, ".local", "share"), "socium");
 }
 
-export function localgrowthPaths(options = {}) {
-  const root = localgrowthRoot(options);
+export function sociumPaths(options = {}) {
+  const root = sociumRoot(options);
   return {
     root,
     dataDirectory: path.join(root, "data"),

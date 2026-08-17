@@ -7,12 +7,12 @@ import pytest
 
 @pytest.fixture(scope="session")
 def client(tmp_path_factory: pytest.TempPathFactory):
-    data_dir = tmp_path_factory.mktemp("localgrowth-data")
-    os.environ["LOCALGROWTH_DATA_DIR"] = str(data_dir)
-    os.environ["LOCALGROWTH_TELEGRAM_POLL_TIMEOUT"] = "5"
-    os.environ["LOCALGROWTH_SCHEDULER_INTERVAL"] = "0.1"
-    os.environ["LOCALGROWTH_SLACK_SOCKET_MODE"] = "0"
-    os.environ["LOCALGROWTH_ENABLE_LABS"] = "0"
+    data_dir = tmp_path_factory.mktemp("socium-data")
+    os.environ["SOCIUM_DATA_DIR"] = str(data_dir)
+    os.environ["SOCIUM_TELEGRAM_POLL_TIMEOUT"] = "5"
+    os.environ["SOCIUM_SCHEDULER_INTERVAL"] = "0.1"
+    os.environ["SOCIUM_SLACK_SOCKET_MODE"] = "0"
+    os.environ["SOCIUM_ENABLE_LABS"] = "0"
 
     from app.config import get_settings
 

@@ -1,8 +1,8 @@
 {
-  "name": "localgrowth-os-web-runtime",
+  "name": "socium-web-runtime",
   "version": "1.0.0",
   "private": true,
-  "description": "Flattened production dependencies copied into LocalGrowth release bundles.",
+  "description": "Flattened production dependencies copied into Socium release bundles.",
   "dependencies": {
     "next": "16.3.0",
     "react": "19.2.8",

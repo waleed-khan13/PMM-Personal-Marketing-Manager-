@@ -76,7 +76,7 @@ def validate_linkedin_organization_id(value: str) -> str:
 
 def _api_base_url() -> str:
     return validate_linkedin_api_base_url(
-        os.getenv("LOCALGROWTH_LINKEDIN_API_BASE_URL", DEFAULT_LINKEDIN_API_BASE_URL)
+        os.getenv("SOCIUM_LINKEDIN_API_BASE_URL", DEFAULT_LINKEDIN_API_BASE_URL)
     )
 
 

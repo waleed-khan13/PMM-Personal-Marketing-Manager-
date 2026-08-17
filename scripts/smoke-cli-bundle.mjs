@@ -8,21 +8,21 @@ import { main } from "../packages/cli/src/cli.mjs";
 import { releaseTarget } from "../packages/cli/src/platform.mjs";
 
 const projectRoot = process.cwd();
-const target = process.env.LOCALGROWTH_RELEASE_TARGET || releaseTarget();
-const fragmentPath = path.join(projectRoot, "release", `localgrowth-asset-${target}.json`);
+const target = process.env.SOCIUM_RELEASE_TARGET || releaseTarget();
+const fragmentPath = path.join(projectRoot, "release", `socium-asset-${target}.json`);
 const fragment = JSON.parse(await readFile(fragmentPath, "utf8"));
 const archivePath = path.join(projectRoot, "release", fragment.file);
-const testRoot = await mkdtemp(path.join(os.tmpdir(), "localgrowth-cli-bundle-"));
+const testRoot = await mkdtemp(path.join(os.tmpdir(), "socium-cli-bundle-"));
 const manifestPath = path.join(testRoot, "manifest.json");
-const webPort = Number(process.env.LOCALGROWTH_CLI_SMOKE_WEB_PORT || "8299");
-const apiPort = Number(process.env.LOCALGROWTH_CLI_SMOKE_API_PORT || "8298");
-const previousHome = process.env.LOCALGROWTH_HOME;
+const webPort = Number(process.env.SOCIUM_CLI_SMOKE_WEB_PORT || "8299");
+const apiPort = Number(process.env.SOCIUM_CLI_SMOKE_API_PORT || "8298");
+const previousHome = process.env.SOCIUM_HOME;
 
 await writeFile(
   manifestPath,
   JSON.stringify({
     schemaVersion: 1,
-    product: "localgrowth-os",
+    product: "socium",
     version: fragment.version,
     assets: {
       [target]: { url: pathToFileURL(archivePath).toString(), sha256: fragment.sha256 },
@@ -30,7 +30,7 @@ await writeFile(
   }),
   "utf8",
 );
-process.env.LOCALGROWTH_HOME = path.join(testRoot, "home");
+process.env.SOCIUM_HOME = path.join(testRoot, "home");
 
 async function terminateProcessTree(child) {
   if (child.exitCode !== null) return;
@@ -61,7 +61,7 @@ try {
   runtime = spawn(
     process.execPath,
     [
-      path.join(projectRoot, "packages", "cli", "bin", "localgrowth.mjs"),
+      path.join(projectRoot, "packages", "cli", "bin", "socium.mjs"),
       "start",
       "--no-open",
       "--port",
@@ -100,7 +100,7 @@ try {
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  if (!health || health.service !== "localgrowth-api") {
+  if (!health || health.service !== "socium-api") {
     throw new Error(`Installed CLI runtime did not become healthy:\n${stderr}`);
   }
   console.log(
@@ -120,7 +120,7 @@ try {
 } finally {
   if (runtime) await terminateProcessTree(runtime);
   await main(["uninstall", "--yes", "--purge-data"], { log() {}, error() {} });
-  if (previousHome === undefined) delete process.env.LOCALGROWTH_HOME;
-  else process.env.LOCALGROWTH_HOME = previousHome;
+  if (previousHome === undefined) delete process.env.SOCIUM_HOME;
+  else process.env.SOCIUM_HOME = previousHome;
   await rm(testRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }

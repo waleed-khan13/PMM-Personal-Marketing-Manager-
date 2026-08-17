@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const webPort = Number(process.env.LOCALGROWTH_E2E_WEB_PORT ?? "3100");
+const webPort = Number(process.env.SOCIUM_E2E_WEB_PORT ?? "3100");
 const baseURL = `http://127.0.0.1:${webPort}`;
-const browserChannel = process.env.LOCALGROWTH_E2E_BROWSER_CHANNEL;
+const browserChannel = process.env.SOCIUM_E2E_BROWSER_CHANNEL;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -35,7 +35,7 @@ export default defineConfig({
   webServer: {
     command: "node scripts/e2e-server.mjs",
     env: {
-      LOCALGROWTH_E2E_WEB_PORT: String(webPort),
+      SOCIUM_E2E_WEB_PORT: String(webPort),
     },
     reuseExistingServer: false,
     stderr: "pipe",

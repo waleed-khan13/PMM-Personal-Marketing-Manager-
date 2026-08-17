@@ -1,15 +1,15 @@
-# Releasing LocalGrowth OS
+# Releasing Socium
 
-Only a maintainer should run this procedure. A tag push publishes public GitHub Release assets and the public `localgrowth-os` npm package; the manual dry-run does neither.
+Only a maintainer should run this procedure. A tag push publishes public GitHub Release assets and the public `socium` npm package; the manual dry-run does neither.
 
 ## One-time npm setup
 
-The first release needs an npm account with two-factor authentication and a short-lived granular access token that has package read/write permission and bypasses 2FA for this non-interactive publication. Because `localgrowth-os` does not exist before its first publication, the initial token may need access to all packages owned by the maintainer.
+The first release needs an npm account with two-factor authentication and a short-lived granular access token that has package read/write permission and bypasses 2FA for this non-interactive publication. Because `socium` does not exist before its first publication, the initial token may need access to all packages owned by the maintainer.
 
 Save that token as the repository Actions secret `NPM_TOKEN` under **Settings → Secrets and variables → Actions**. Never add it to a local `.env`, git, workflow YAML, issue, or log. After the first package exists, configure npm trusted publishing for:
 
 - GitHub owner: `waleed-khan13`
-- Repository: `PMM-Personal-Marketing-Manager-`
+- Repository: `socium`
 - Workflow filename: `release.yml`
 - Allowed action: `npm publish`
 
@@ -45,19 +45,19 @@ Do not continue until all six matrix jobs are green.
 Create one annotated tag after the candidate commit and version are final:
 
 ```bash
-git tag -a v1.0.0 -m "LocalGrowth OS 1.0.0"
+git tag -a v1.0.0 -m "Socium 1.0.0"
 git push origin v1.0.0
 ```
 
-The tag-triggered workflow repeats all native builds rather than trusting dry-run artifacts. It then creates the GitHub Release, uploads every archive and `.sha256` file plus `localgrowth-manifest.json`, and publishes the CLI to npm. Never move or reuse a published version tag. If publication fails after npm accepts the version, fix the issue and release a new patch version.
+The tag-triggered workflow repeats all native builds rather than trusting dry-run artifacts. It then creates the GitHub Release, uploads every archive and `.sha256` file plus `socium-manifest.json`, and publishes the CLI to npm. Never move or reuse a published version tag. If publication fails after npm accepts the version, fix the issue and release a new patch version.
 
 ## 4. Verify the public release
 
 Check that the workflow is green and that the GitHub Release contains six archives, six checksum files, and one manifest. Then use a clean temporary application home on a supported machine:
 
 ```bash
-npx localgrowth-os@1.0.0 onboard
-npx localgrowth-os@1.0.0 doctor
+npx socium@1.0.0 onboard
+npx socium@1.0.0 doctor
 ```
 
 Confirm that the browser opens on loopback, `/api/health` reports version `1.0.0` and edition `social-v1`, and normal uninstall preserves the data directory. Announce the release only after this public-download verification passes.

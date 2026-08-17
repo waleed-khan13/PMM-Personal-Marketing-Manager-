@@ -31,23 +31,23 @@ class Settings:
 def get_settings() -> Settings:
     backend_root = Path(__file__).resolve().parents[1]
     project_root = backend_root.parent
-    configured_data_dir = os.getenv("LOCALGROWTH_DATA_DIR", "").strip()
+    configured_data_dir = os.getenv("SOCIUM_DATA_DIR", "").strip()
     data_dir = (
         Path(configured_data_dir).expanduser().resolve() if configured_data_dir else project_root / "data"
     )
-    host = os.getenv("LOCALGROWTH_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
-    port = int(os.getenv("LOCALGROWTH_API_PORT", "8000"))
-    poll_timeout = max(5, min(int(os.getenv("LOCALGROWTH_TELEGRAM_POLL_TIMEOUT", "25")), 50))
-    scheduler_interval = max(0.1, min(float(os.getenv("LOCALGROWTH_SCHEDULER_INTERVAL", "1")), 10))
-    scheduler_catch_up_hours = max(1, min(int(os.getenv("LOCALGROWTH_SCHEDULER_CATCH_UP_HOURS", "24")), 168))
-    scheduler_stale_minutes = max(1, min(int(os.getenv("LOCALGROWTH_SCHEDULER_STALE_MINUTES", "10")), 60))
-    slack_socket_enabled = os.getenv("LOCALGROWTH_SLACK_SOCKET_MODE", "1").strip().lower() not in {
+    host = os.getenv("SOCIUM_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = int(os.getenv("SOCIUM_API_PORT", "8000"))
+    poll_timeout = max(5, min(int(os.getenv("SOCIUM_TELEGRAM_POLL_TIMEOUT", "25")), 50))
+    scheduler_interval = max(0.1, min(float(os.getenv("SOCIUM_SCHEDULER_INTERVAL", "1")), 10))
+    scheduler_catch_up_hours = max(1, min(int(os.getenv("SOCIUM_SCHEDULER_CATCH_UP_HOURS", "24")), 168))
+    scheduler_stale_minutes = max(1, min(int(os.getenv("SOCIUM_SCHEDULER_STALE_MINUTES", "10")), 60))
+    slack_socket_enabled = os.getenv("SOCIUM_SLACK_SOCKET_MODE", "1").strip().lower() not in {
         "0",
         "false",
         "no",
         "off",
     }
-    labs_enabled = os.getenv("LOCALGROWTH_ENABLE_LABS", "0").strip().lower() in {
+    labs_enabled = os.getenv("SOCIUM_ENABLE_LABS", "0").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -56,9 +56,9 @@ def get_settings() -> Settings:
     return Settings(
         project_root=project_root,
         data_dir=data_dir,
-        database_path=data_dir / "localgrowth.db",
+        database_path=data_dir / "socium.db",
         master_key_path=data_dir / "master.key",
-        legacy_json_path=data_dir / "localgrowth.json",
+        legacy_json_path=data_dir / "socium.json",
         host=host,
         port=port,
         telegram_poll_timeout=poll_timeout,

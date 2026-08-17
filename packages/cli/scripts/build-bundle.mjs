@@ -32,21 +32,21 @@ async function sha256(filePath) {
   return hash.digest("hex");
 }
 
-const target = argument("--target") || process.env.LOCALGROWTH_RELEASE_TARGET || releaseTarget();
+const target = argument("--target") || process.env.SOCIUM_RELEASE_TARGET || releaseTarget();
 if (!supportedReleaseTargets().includes(target)) throw new Error(`Unsupported release target: ${target}`);
 
 const version = packageJson.version;
 const platform = target.split("-")[0];
 const executableName = backendFileName(platform);
 const backendBinary = path.resolve(
-  process.env.LOCALGROWTH_API_BINARY || path.join(projectRoot, "backend", "dist", executableName),
+  process.env.SOCIUM_API_BINARY || path.join(projectRoot, "backend", "dist", executableName),
 );
 const standaloneRoot = path.join(projectRoot, ".next", "standalone");
 const portableModulesRoot = path.join(projectRoot, "packaging", "web-runtime", "node_modules");
 const outputRoot = path.join(projectRoot, "release");
 const stagingRoot = path.join(outputRoot, "staging", target);
 const runtimeRoot = path.join(stagingRoot, "runtime");
-const archiveName = `localgrowth-os-${version}-${target}.tar.gz`;
+const archiveName = `socium-${version}-${target}.tar.gz`;
 const archivePath = path.join(outputRoot, archiveName);
 
 if (!(await exists(path.join(standaloneRoot, "server.js")))) {
@@ -85,7 +85,7 @@ await writeFile(
   `${JSON.stringify(
     {
       schemaVersion: 1,
-      product: "localgrowth-os",
+      product: "socium",
       version,
       target,
       createdAt: new Date().toISOString(),
@@ -122,7 +122,7 @@ const fragment = {
   sha256: archiveChecksum,
 };
 await writeFile(
-  path.join(outputRoot, `localgrowth-asset-${target}.json`),
+  path.join(outputRoot, `socium-asset-${target}.json`),
   `${JSON.stringify(fragment, null, 2)}\n`,
   "utf8",
 );

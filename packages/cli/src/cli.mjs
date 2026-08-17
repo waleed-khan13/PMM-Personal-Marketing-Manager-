@@ -6,23 +6,23 @@ import {
 } from "./constants.mjs";
 import { diagnose } from "./doctor.mjs";
 import { installRelease } from "./installation.mjs";
-import { localgrowthPaths } from "./paths.mjs";
+import { sociumPaths } from "./paths.mjs";
 import { startRuntime } from "./runtime.mjs";
 import { uninstall } from "./uninstall.mjs";
 
-const helpText = `LocalGrowth OS ${CLI_VERSION}
+const helpText = `Socium ${CLI_VERSION}
 
 Usage:
-  localgrowth onboard [--manifest URL] [--install-only] [--no-open]
-  localgrowth start [--port 3000] [--api-port 8000] [--no-open] [--labs]
-  localgrowth update [--manifest URL] [--force]
-  localgrowth doctor [--json]
-  localgrowth uninstall --yes [--purge-data]
-  localgrowth version
+  socium onboard [--manifest URL] [--install-only] [--no-open]
+  socium start [--port 3000] [--api-port 8000] [--no-open] [--labs]
+  socium update [--manifest URL] [--force]
+  socium doctor [--json]
+  socium uninstall --yes [--purge-data]
+  socium version
 
 Environment:
-  LOCALGROWTH_HOME                 Override the application data/runtime root.
-  LOCALGROWTH_RELEASE_MANIFEST     Override the official release manifest URL.
+  SOCIUM_HOME                 Override the application data/runtime root.
+  SOCIUM_RELEASE_MANIFEST     Override the official release manifest URL.
 `;
 
 function parseArguments(argv) {
@@ -53,12 +53,12 @@ function parsePort(value, fallback, name) {
 
 function manifestSource(arguments_) {
   return (
-    arguments_.values.get("--manifest") || process.env.LOCALGROWTH_RELEASE_MANIFEST || DEFAULT_MANIFEST_URL
+    arguments_.values.get("--manifest") || process.env.SOCIUM_RELEASE_MANIFEST || DEFAULT_MANIFEST_URL
   );
 }
 
 function printDoctor(result, log) {
-  log(`LocalGrowth home: ${result.root}`);
+  log(`Socium home: ${result.root}`);
   for (const check of result.checks) log(`${check.ok ? "PASS" : check.advisory ? "INFO" : "FAIL"}  ${check.name}: ${check.detail}`);
   log(result.ok ? "Doctor completed successfully." : "Doctor found blocking problems.");
 }
@@ -66,7 +66,7 @@ function printDoctor(result, log) {
 export async function main(argv, { log = console.log, error = console.error } = {}) {
   try {
     const arguments_ = parseArguments(argv);
-    const paths = localgrowthPaths();
+    const paths = sociumPaths();
     const webPort = parsePort(arguments_.values.get("--port"), DEFAULT_WEB_PORT, "--port");
     const apiPort = parsePort(arguments_.values.get("--api-port"), DEFAULT_API_PORT, "--api-port");
 

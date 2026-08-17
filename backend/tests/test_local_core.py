@@ -60,11 +60,11 @@ def test_health_state_and_encrypted_settings(client) -> None:
 def test_labs_require_an_explicit_environment_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.config import get_settings
 
-    monkeypatch.setenv("LOCALGROWTH_ENABLE_LABS", "1")
+    monkeypatch.setenv("SOCIUM_ENABLE_LABS", "1")
     get_settings.cache_clear()
     assert get_settings().labs_enabled is True
 
-    monkeypatch.setenv("LOCALGROWTH_ENABLE_LABS", "0")
+    monkeypatch.setenv("SOCIUM_ENABLE_LABS", "0")
     get_settings.cache_clear()
     assert get_settings().labs_enabled is False
 
@@ -261,7 +261,7 @@ def test_public_website_crawl_preview_and_import(client, monkeypatch) -> None:
                 {"url": "https://acme.example/contact", "title": "Contact"},
             ],
             "robotsRespected": True,
-            "userAgent": "LocalGrowthOS/0.9",
+            "userAgent": "Socium/0.9",
         }
 
     monkeypatch.setattr("app.main.crawl_website", fake_crawl)
@@ -1044,7 +1044,7 @@ def test_connector_vault_redacts_secrets_and_validates_slack(client, monkeypatch
         "user": {"id": "U123456"},
         "actions": [
             {
-                "action_id": "localgrowth_approve",
+                "action_id": "socium_approve",
                 "value": f"lg:approve:{post['id']}:{post['revision']}",
             }
         ],
@@ -1473,8 +1473,8 @@ def test_meta_payload_and_graph_endpoint_validation(monkeypatch) -> None:
         validate_meta_page_id("northstar-page")
 
     assert approved_facebook_message(
-        {"body": "Approved body", "hashtags": ["#LocalGrowth", "Reviewed"]}
-    ) == "Approved body\n\n#LocalGrowth #Reviewed"
+        {"body": "Approved body", "hashtags": ["#Socium", "Reviewed"]}
+    ) == "Approved body\n\n#Socium #Reviewed"
 
     leaked_token = "page-token-that-must-not-leak"
     request_capture: dict = {}
@@ -1530,7 +1530,7 @@ def test_meta_payload_and_graph_endpoint_validation(monkeypatch) -> None:
             "123456789012345",
             "v25.0",
             "secret-page-token",
-            {"body": "Approved body", "hashtags": ["#LocalGrowth", "Reviewed"]},
+            {"body": "Approved body", "hashtags": ["#Socium", "Reviewed"]},
         )
     )
     assert result.remote_id == "123456789012345_987654321"
@@ -1540,7 +1540,7 @@ def test_meta_payload_and_graph_endpoint_validation(monkeypatch) -> None:
         "resource": "feed",
         "api_version": "v25.0",
         "method": "POST",
-        "data": {"message": "Approved body\n\n#LocalGrowth #Reviewed"},
+        "data": {"message": "Approved body\n\n#Socium #Reviewed"},
         "timeout": 45,
     }
 
@@ -1738,8 +1738,8 @@ def test_instagram_media_validation_and_container_publish_flow(monkeypatch) -> N
         validate_instagram_user_id("northstar")
 
     assert approved_instagram_caption(
-        {"body": "Approved caption", "hashtags": ["#LocalGrowth", "Reviewed"]}
-    ) == "Approved caption\n\n#LocalGrowth #Reviewed"
+        {"body": "Approved caption", "hashtags": ["#Socium", "Reviewed"]}
+    ) == "Approved caption\n\n#Socium #Reviewed"
     with pytest.raises(ExternalServiceError, match="2,200"):
         approved_instagram_caption({"body": "x" * 2_201, "hashtags": []})
 
@@ -1818,7 +1818,7 @@ def test_instagram_media_validation_and_container_publish_flow(monkeypatch) -> N
             "secret-instagram-token",
             {
                 "body": "Approved caption",
-                "hashtags": ["#LocalGrowth", "Reviewed"],
+                "hashtags": ["#Socium", "Reviewed"],
                 "mediaUrl": "https://cdn.example.com/image.jpg?signature=one-time",
             },
             status_delay=0,
@@ -1834,7 +1834,7 @@ def test_instagram_media_validation_and_container_publish_flow(monkeypatch) -> N
             "method": "POST",
             "data": {
                 "image_url": "https://cdn.example.com/image.jpg?signature=one-time",
-                "caption": "Approved caption\n\n#LocalGrowth #Reviewed",
+                "caption": "Approved caption\n\n#Socium #Reviewed",
             },
             "timeout": 45,
         },
@@ -1910,7 +1910,7 @@ def test_linkedin_connector_publishes_exact_approved_member_revision(client, mon
         return GeneratedContent(
             title="Approved LinkedIn update",
             body="This exact reviewed update should reach the connected member profile.",
-            hashtags=["#LocalGrowth", "HumanReviewed"],
+            hashtags=["#Socium", "HumanReviewed"],
             rationale="Exercises the official LinkedIn Posts publisher.",
         )
 
@@ -2033,8 +2033,8 @@ def test_linkedin_payload_versioning_and_token_redaction(monkeypatch) -> None:
         validate_linkedin_person_id("member:id")
 
     assert approved_linkedin_commentary(
-        {"body": "Approved update", "hashtags": ["#LocalGrowth", "Reviewed"]}
-    ) == "Approved update\n\n#LocalGrowth #Reviewed"
+        {"body": "Approved update", "hashtags": ["#Socium", "Reviewed"]}
+    ) == "Approved update\n\n#Socium #Reviewed"
     with pytest.raises(ExternalServiceError, match="3,000"):
         approved_linkedin_commentary({"body": "x" * 3_001, "hashtags": []})
 
@@ -2081,7 +2081,7 @@ def test_linkedin_payload_versioning_and_token_redaction(monkeypatch) -> None:
             "782bbtaQ",
             "202607",
             "secret-linkedin-token",
-            {"body": "Approved update", "hashtags": ["#LocalGrowth", "Reviewed"]},
+            {"body": "Approved update", "hashtags": ["#Socium", "Reviewed"]},
         )
     )
     assert result.remote_id == "urn:li:share:7190000000000000002"
@@ -2093,7 +2093,7 @@ def test_linkedin_payload_versioning_and_token_redaction(monkeypatch) -> None:
             "api_version": "202607",
             "json_body": {
                 "author": "urn:li:person:782bbtaQ",
-                "commentary": "Approved update\n\n#LocalGrowth #Reviewed",
+                "commentary": "Approved update\n\n#Socium #Reviewed",
                 "visibility": "PUBLIC",
                 "distribution": {
                     "feedDistribution": "MAIN_FEED",
@@ -2132,7 +2132,7 @@ def test_linkedin_company_connector_publishes_exact_approved_page_revision(clien
         "/api/connectors",
         json={
             "adapterId": "linkedin-organization",
-            "name": "LocalGrowth Company Page",
+            "name": "Socium Company Page",
             "config": {
                 "person_id": person_id,
                 "organization_id": organization_id,
@@ -2186,7 +2186,7 @@ def test_linkedin_company_connector_publishes_exact_approved_page_revision(clien
         return GeneratedContent(
             title="Approved LinkedIn Company update",
             body="This exact reviewed update should reach the connected Company Page.",
-            hashtags=["#LocalGrowth", "CompanyReviewed"],
+            hashtags=["#Socium", "CompanyReviewed"],
             rationale="Exercises the official LinkedIn organization Posts publisher.",
         )
 
@@ -2381,7 +2381,7 @@ def test_linkedin_company_authorization_and_payload(monkeypatch) -> None:
             "5515715",
             "202607",
             "secret-company-token",
-            {"body": "Approved Page update", "hashtags": ["#LocalGrowth", "Reviewed"]},
+            {"body": "Approved Page update", "hashtags": ["#Socium", "Reviewed"]},
         )
     )
     assert result.remote_id == "urn:li:share:7190000000000000011"
@@ -2389,7 +2389,7 @@ def test_linkedin_company_authorization_and_payload(monkeypatch) -> None:
     assert publish_calls[0]["api_version"] == "202607"
     assert publish_calls[0]["json_body"] == {
         "author": "urn:li:organization:5515715",
-        "commentary": "Approved Page update\n\n#LocalGrowth #Reviewed",
+        "commentary": "Approved Page update\n\n#Socium #Reviewed",
         "visibility": "PUBLIC",
         "distribution": {
             "feedDistribution": "MAIN_FEED",
@@ -2425,7 +2425,7 @@ def test_whatsapp_connector_sends_encrypted_template_notification(client, monkey
                 "phone_number_id": "155500011122233",
                 "recipient_phone": "+92 300 1234567",
                 "api_version": "v25.0",
-                "template_name": "localgrowth_draft_review",
+                "template_name": "socium_draft_review",
                 "template_language": "en_US",
             },
             "secrets": {"access_token": access_token},
@@ -2466,7 +2466,7 @@ def test_whatsapp_connector_sends_encrypted_template_notification(client, monkey
         return GeneratedContent(
             title="Review this launch",
             body="An exact WhatsApp template notification preview.",
-            hashtags=["#localgrowth"],
+            hashtags=["#socium"],
             rationale="Exercises the localhost-safe notification path.",
         )
 
@@ -2484,7 +2484,7 @@ def test_whatsapp_connector_sends_encrypted_template_notification(client, monkey
                 "post": post,
             }
         )
-        return WhatsAppDeliveryResult(remote_id="wamid.localgrowth-notification")
+        return WhatsAppDeliveryResult(remote_id="wamid.socium-notification")
 
     monkeypatch.setattr("app.main.generate_content", fake_generate)
     monkeypatch.setattr("app.connectors.service.send_whatsapp_approval_template", fake_send)
@@ -2507,14 +2507,14 @@ def test_whatsapp_connector_sends_encrypted_template_notification(client, monkey
             "channel": "whatsapp",
             "ok": True,
             "message": "Draft review notification sent to WhatsApp.",
-            "messageId": "wamid.localgrowth-notification",
+            "messageId": "wamid.socium-notification",
         }
     ]
     assert captured == {
         "number_id": "155500011122233",
         "recipient": "+92 300 1234567",
         "version": "v25.0",
-        "template": "localgrowth_draft_review",
+        "template": "socium_draft_review",
         "language": "en_US",
         "token": access_token,
         "post": post,
@@ -2524,7 +2524,7 @@ def test_whatsapp_connector_sends_encrypted_template_notification(client, monkey
         item["entityId"] == post["id"]
         and item["action"] == "approval.sent"
         and item["summary"]
-        == "Approval request sent to WhatsApp; remote message ID wamid.localgrowth-notification."
+        == "Approval request sent to WhatsApp; remote message ID wamid.socium-notification."
         for item in audit
     )
 
@@ -2570,7 +2570,7 @@ def test_whatsapp_template_payload_and_security_validation(monkeypatch) -> None:
                 json={"error": {"code": 190, "message": f"Invalid token {leaked_token}"}},
             )
 
-    monkeypatch.setenv("LOCALGROWTH_WHATSAPP_GRAPH_BASE_URL", "http://127.0.0.1:4100/whatsapp")
+    monkeypatch.setenv("SOCIUM_WHATSAPP_GRAPH_BASE_URL", "http://127.0.0.1:4100/whatsapp")
     monkeypatch.setattr("app.services.whatsapp.httpx.AsyncClient", FakeAsyncClient)
     with pytest.raises(ExternalServiceError) as error:
         asyncio.run(
@@ -2605,7 +2605,7 @@ def test_whatsapp_template_payload_and_security_validation(monkeypatch) -> None:
             "155500011122233",
             "+92 300 1234567",
             "v25.0",
-            "localgrowth_draft_review",
+            "socium_draft_review",
             "en_US",
             "never-log-this-token",
             {
@@ -2625,7 +2625,7 @@ def test_whatsapp_template_payload_and_security_validation(monkeypatch) -> None:
         "to": "923001234567",
         "type": "template",
         "template": {
-            "name": "localgrowth_draft_review",
+            "name": "socium_draft_review",
             "language": {"code": "en_US"},
             "components": [
                 {
@@ -3016,7 +3016,7 @@ def test_comfyui_adapter_injects_placeholders_and_fetches_first_output(monkeypat
                     "outputs": {
                         "9": {
                             "images": [
-                                {"filename": "result.png", "subfolder": "localgrowth", "type": "output"}
+                                {"filename": "result.png", "subfolder": "socium", "type": "output"}
                             ]
                         }
                     },
@@ -3079,7 +3079,7 @@ def test_comfyui_adapter_injects_placeholders_and_fetches_first_output(monkeypat
     assert progress[-1][0] == 85
     assert calls[-1]["params"] == {
         "filename": "result.png",
-        "subfolder": "localgrowth",
+        "subfolder": "socium",
         "type": "output",
     }
 

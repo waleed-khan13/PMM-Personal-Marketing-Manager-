@@ -39,7 +39,7 @@ class WhatsAppAdapter:
                 key="template_name",
                 label="Approved template name",
                 required=True,
-                placeholder="localgrowth_draft_review",
+                placeholder="socium_draft_review",
                 help_text="An approved template with four body variables.",
             ),
             ConnectorField(

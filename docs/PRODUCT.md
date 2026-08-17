@@ -1,15 +1,15 @@
-# LocalGrowth OS — Product definition
+# Socium — Product definition
 
 ## What it is
 
-LocalGrowth OS is a downloadable, localhost-only growth operations console. A business defines its brand, goals, channels, policies, budget, and approval rules. Specialized AI agents then prepare work, but connector actions are executed only by deterministic local workflows with explicit permissions.
+Socium is a downloadable, localhost-only growth operations console. A business defines its brand, goals, channels, policies, budget, and approval rules. Specialized AI agents then prepare work, but connector actions are executed only by deterministic local workflows with explicit permissions.
 
 It borrows the useful control-plane ideas from agent-management products—goals, roles, heartbeats, budgets, approvals, adapters, and auditability—while focusing on the daily work of marketing, lead research, and SEO.
 
 ## Release tracks
 
 - **Stable v1:** AI-assisted social and blog drafting, exact-revision approval, media preparation, official publishing connectors, durable scheduling, and local auditability.
-- **Labs:** Lead intelligence and Local SEO stay compiled and locally usable behind `LOCALGROWTH_ENABLE_LABS=1`, but are not part of the v1 stability promise.
+- **Labs:** Lead intelligence and Local SEO stay compiled and locally usable behind `SOCIUM_ENABLE_LABS=1`, but are not part of the v1 stability promise.
 - **Future updates:** richer media formats, metrics, discovery, SEO execution, plugins, backup tooling, and installers graduate independently after their acceptance criteria pass.
 
 ## Who it serves
@@ -26,7 +26,7 @@ It borrows the useful control-plane ideas from agent-management products—goals
 3. **Official actions.** Publishing uses documented platform APIs. Data collection respects source terms, robots directives, consent, and applicable law.
 4. **Agents propose; workflows execute.** LLM output is untrusted structured input. Deterministic code validates and performs actions.
 5. **Everything is attributable.** Runs record inputs, model/provider, cost, policy result, approver, connector response, and rollback data.
-6. **No hosted dependency.** SQLite, local listeners, CSV import/export, and generic OpenAI-compatible endpoints keep the core useful without a LocalGrowth cloud service.
+6. **No hosted dependency.** SQLite, local listeners, CSV import/export, and generic OpenAI-compatible endpoints keep the core useful without a Socium cloud service.
 
 ## Core objects
 
@@ -123,4 +123,4 @@ It borrows the useful control-plane ideas from agent-management products—goals
 - Fake engagement, mass unsolicited messaging, or autonomous claims without review.
 - Storing third-party source data beyond its license or platform policy.
 - Letting an LLM directly hold unrestricted credentials or execute arbitrary shell/browser actions.
-- Requiring a LocalGrowth-hosted account, remote database, or public deployment for core features.
+- Requiring a Socium-hosted account, remote database, or public deployment for core features.

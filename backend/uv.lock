@@ -384,7 +384,7 @@ wheels = [
 ]
 
 [[package]]
-name = "localgrowth-api"
+name = "socium-api"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

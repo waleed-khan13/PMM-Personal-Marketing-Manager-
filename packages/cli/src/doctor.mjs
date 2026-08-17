@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { DEFAULT_API_PORT, DEFAULT_WEB_PORT } from "./constants.mjs";
 import { loadInstallation } from "./installation.mjs";
-import { localgrowthPaths } from "./paths.mjs";
+import { sociumPaths } from "./paths.mjs";
 import { isPortAvailable, runtimeLayout } from "./runtime.mjs";
 
 function nodeVersionOkay(version = process.versions.node) {
@@ -12,7 +12,7 @@ function nodeVersionOkay(version = process.versions.node) {
 }
 
 export async function diagnose({
-  paths = localgrowthPaths(),
+  paths = sociumPaths(),
   webPort = DEFAULT_WEB_PORT,
   apiPort = DEFAULT_API_PORT,
 } = {}) {
@@ -60,14 +60,14 @@ export async function diagnose({
   checks.push({
     name: `Web port ${webPort}`,
     ok: webPortAvailable,
-    detail: webPortAvailable ? "available" : "occupied (LocalGrowth may already be running)",
+    detail: webPortAvailable ? "available" : "occupied (Socium may already be running)",
     advisory: true,
   });
   const apiPortAvailable = await isPortAvailable(apiPort);
   checks.push({
     name: `API port ${apiPort}`,
     ok: apiPortAvailable,
-    detail: apiPortAvailable ? "available" : "occupied (LocalGrowth may already be running)",
+    detail: apiPortAvailable ? "available" : "occupied (Socium may already be running)",
     advisory: true,
   });
 

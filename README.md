@@ -1,10 +1,10 @@
-# LocalGrowth OS
+# Socium
 
-LocalGrowth OS is an open-source, localhost-only control plane for AI-assisted social publishing. Version `1.0.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted LocalGrowth account or server.
+Socium is an open-source, localhost-only control plane for AI-assisted social publishing. Version `1.0.0` runs a Next.js console and FastAPI service on the operator's own computer, stores application data in SQLite, and does not require a hosted Socium account or server.
 
 ## Version 1.0 scope
 
-The default v1.0 product surface focuses on one complete workflow: connect an AI model, create channel-aware drafts, obtain human approval, and publish or schedule the exact approved revision. Lead intelligence and Local SEO remain in the repository as opt-in previews so they can mature through later updates without weakening the first stable release. Set `LOCALGROWTH_ENABLE_LABS=1` before launch to show those preview workspaces.
+The default v1.0 product surface focuses on one complete workflow: connect an AI model, create channel-aware drafts, obtain human approval, and publish or schedule the exact approved revision. Lead intelligence and Local SEO remain in the repository as opt-in previews so they can mature through later updates without weakening the first stable release. Set `SOCIUM_ENABLE_LABS=1` before launch to show those preview workspaces.
 
 See [docs/V1_RELEASE.md](docs/V1_RELEASE.md) for the release contract and [docs/RELEASING.md](docs/RELEASING.md) for the maintainer dry-run, tagging, and publication procedure.
 
@@ -59,7 +59,7 @@ Requirements:
 Windows, macOS, and Linux users do not need Docker, Python, uv, pnpm, or a source checkout:
 
 ```bash
-npx localgrowth-os onboard
+npx socium onboard
 ```
 
 The command downloads the bundle for the current operating system and CPU, verifies its published SHA-256 checksum, keeps the runtime separate from business data, starts both services on loopback, and opens [http://127.0.0.1:3000](http://127.0.0.1:3000). Updates and normal uninstalls preserve the SQLite database, encryption key, media, and exports. See [docs/INSTALLATION.md](docs/INSTALLATION.md) for paths, lifecycle commands, troubleshooting, and permanent removal.
@@ -90,15 +90,15 @@ Complete the checklist in the dashboard:
 5. Generate and review a Telegram draft, then approve it.
 6. Publish immediately or schedule the exact approved revision from the local queue.
 
-Slack can also be configured under Integrations. LocalGrowth stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
+Slack can also be configured under Integrations. Socium stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
 
 WhatsApp Cloud can be configured as a notification-only connector under Integrations. Supply the business Phone Number ID, one international review-recipient number, a pinned Graph API version, an approved template name/language, and a permanent system-user token with `whatsapp_business_messaging` and `whatsapp_business_management`. The template body must contain four text variables in this order: channel, title, revision, and draft excerpt. **Save & test** verifies the business-number identity; generation can then send the preview and store Meta's returned `wamid`. Approval and rejection still happen in the local UI, Telegram, or Slack because interactive WhatsApp callbacks require a public HTTPS webhook, which strict-localhost mode deliberately does not expose.
 
-For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. LocalGrowth stores the returned WordPress post ID and link in local state and the audit trail.
+For a personal or business blog, add a WordPress connection under Integrations using the site root URL, username, and a WordPress Application Password. Remote sites must use HTTPS. After **Save & test**, generate a `Blog` draft, approve that exact revision, then publish immediately or schedule it with the same durable local worker. Socium stores the returned WordPress post ID and link in local state and the audit trail.
 
 For Facebook publishing, create a Page Access Token for the target Page with `pages_read_engagement` and `pages_manage_posts`, then add the numeric Page ID, pinned Graph API version, and token under **Integrations → Facebook Page publisher**. The official Meta `/me/accounts` flow can return the Page IDs and Page Access Tokens available to a user token. After **Save & test**, generate a `Facebook` draft and approve it; immediate and scheduled delivery both send only that exact revision. The token remains encrypted in the local vault, and only its presence flag reaches the browser. See the [official Meta Facebook API collection](https://www.postman.com/meta/facebook/documentation/r56bjfd/facebook-api).
 
-For Instagram publishing, use an Instagram Business or Creator account and a token created through Instagram Login with `instagram_business_basic` and `instagram_business_content_publish`. Add the numeric Professional Account ID, pinned Graph API version, and token under **Integrations → Instagram Professional publisher**. A linked Facebook Page is not required for this login path. Each `Instagram` draft also requires a public HTTPS image URL; Meta fetches that image itself, so a localhost file, private IP, or local network URL cannot be used even though LocalGrowth itself remains localhost-only. The exact URL, caption, and hashtags are stored with the draft revision, processed as a media container, and published only after that container reports `FINISHED`. See the [official Instagram API documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api), [image-container request](https://www.postman.com/meta/instagram/request/23987686-f4b5a72d-a125-4080-8968-93de1a549e68), and [publish request](https://www.postman.com/meta/instagram/request/23987686-f1c081c0-be35-4ffa-84bb-2c1726860c2b).
+For Instagram publishing, use an Instagram Business or Creator account and a token created through Instagram Login with `instagram_business_basic` and `instagram_business_content_publish`. Add the numeric Professional Account ID, pinned Graph API version, and token under **Integrations → Instagram Professional publisher**. A linked Facebook Page is not required for this login path. Each `Instagram` draft also requires a public HTTPS image URL; Meta fetches that image itself, so a localhost file, private IP, or local network URL cannot be used even though Socium itself remains localhost-only. The exact URL, caption, and hashtags are stored with the draft revision, processed as a media container, and published only after that container reports `FINISHED`. See the [official Instagram API documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api), [image-container request](https://www.postman.com/meta/instagram/request/23987686-f4b5a72d-a125-4080-8968-93de1a549e68), and [publish request](https://www.postman.com/meta/instagram/request/23987686-f1c081c0-be35-4ffa-84bb-2c1726860c2b).
 
 The **Media library** accepts decoded JPEG, PNG, and WebP files up to 10 MB and 40 megapixels. It uses random storage names, retains the original locally, generates a bounded WebP preview, deduplicates identical bytes, and can create 1080×1080 square, 1080×1350 portrait, or 1200×628 landscape WebP variants. Alt text and an optional public HTTPS source can be recorded per asset. Local content URLs remain private loopback resources; **Use in draft** is enabled only when the operator explicitly records where that same asset is publicly hosted for Meta to fetch. Deleting an asset names the affected file, requires confirmation, removes both local original and preview, and leaves an audit event.
 
@@ -106,17 +106,17 @@ The same screen includes an **AI image studio** with three independently stored 
 
 All image requests enter the SQLite-backed local worker instead of keeping the browser request open. The queue survives navigation and restart, exposes stage progress and attempt counts, supports operator cancellation and retry, and refreshes the private library when output is ready. Image-provider credentials are encrypted separately from the text provider. Every returned byte stream must pass the same content, size, pixel, and dimension verification as a manual upload before it enters the library. Generation never creates or publishes a post; the library remains the human review boundary. See the [OpenAI Image API guide](https://developers.openai.com/api/docs/guides/image-generation), [Automatic1111 API guide](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API), and [ComfyUI server routes](https://docs.comfy.org/development/comfyui-server/comms_routes).
 
-For LinkedIn Member publishing, enable the **Sign In with LinkedIn using OpenID Connect** and **Share on LinkedIn** products for your own LinkedIn developer app. Generate a member-authorized 3-legged OAuth token with `openid`, `profile`, and `w_member_social`, then enter the `sub` returned by `/v2/userinfo` as the Member ID. Under **Integrations → LinkedIn Member publisher**, save that ID, the token, and a supported `YYYYMM` API version; LocalGrowth defaults to `202607` but keeps it editable because LinkedIn versions are released monthly and supported for a limited period. After **Save & test**, an exact approved `LinkedIn` text revision can publish immediately or through the durable scheduler. LocalGrowth uses bearer authorization, `X-Restli-Protocol-Version: 2.0.0`, and the pinned `Linkedin-Version` header; it never uses LinkedIn cookies, passwords, profile scraping, or simulated browser clicks. See the [official Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api), [OpenID Connect guide](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2), and [3-legged OAuth flow](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow).
+For LinkedIn Member publishing, enable the **Sign In with LinkedIn using OpenID Connect** and **Share on LinkedIn** products for your own LinkedIn developer app. Generate a member-authorized 3-legged OAuth token with `openid`, `profile`, and `w_member_social`, then enter the `sub` returned by `/v2/userinfo` as the Member ID. Under **Integrations → LinkedIn Member publisher**, save that ID, the token, and a supported `YYYYMM` API version; Socium defaults to `202607` but keeps it editable because LinkedIn versions are released monthly and supported for a limited period. After **Save & test**, an exact approved `LinkedIn` text revision can publish immediately or through the durable scheduler. Socium uses bearer authorization, `X-Restli-Protocol-Version: 2.0.0`, and the pinned `Linkedin-Version` header; it never uses LinkedIn cookies, passwords, profile scraping, or simulated browser clicks. See the [official Posts API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api), [OpenID Connect guide](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2), and [3-legged OAuth flow](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow).
 
-LinkedIn Company Page publishing is deliberately a separate, access-gated connector. Your LinkedIn developer app must be approved for organization publishing and organization administration scopes. Create a member-authorized token with `openid`, `profile`, `w_organization_social`, and `rw_organization_admin`, then add the consenting member's OIDC `sub`, numeric Organization ID, token, and supported API version under **Integrations → LinkedIn Company Page publisher**. **Save & verify permission** checks the member identity and LinkedIn's permission-based `ORGANIC_SHARE_CREATE` authorization for that exact organization before LocalGrowth marks the connector ready. An approved `LinkedIn Company Page` revision then publishes with `urn:li:organization:{id}` as its author. LocalGrowth cannot grant LinkedIn products, scopes, or Page roles; a 403 remains an actionable connector error rather than a bypass attempt. See LinkedIn's [organization authorization guide](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-authorizations/getting-started) and [organization authorizations API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-authorizations/organization-authorizations).
+LinkedIn Company Page publishing is deliberately a separate, access-gated connector. Your LinkedIn developer app must be approved for organization publishing and organization administration scopes. Create a member-authorized token with `openid`, `profile`, `w_organization_social`, and `rw_organization_admin`, then add the consenting member's OIDC `sub`, numeric Organization ID, token, and supported API version under **Integrations → LinkedIn Company Page publisher**. **Save & verify permission** checks the member identity and LinkedIn's permission-based `ORGANIC_SHARE_CREATE` authorization for that exact organization before Socium marks the connector ready. An approved `LinkedIn Company Page` revision then publishes with `urn:li:organization:{id}` as its author. Socium cannot grant LinkedIn products, scopes, or Page roles; a 403 remains an actionable connector error rather than a bypass attempt. See LinkedIn's [organization authorization guide](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-authorizations/getting-started) and [organization authorizations API](https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-authorizations/organization-authorizations).
 
-With Labs enabled, open **Lead intelligence** to upload or paste CSV data. Recognized columns include `company`, `website`, `email`, `phone`, `location`, `source_url`, and common aliases. Choose `LinkedIn export` only for a file you exported or are authorized to use; LocalGrowth does not scrape LinkedIn pages. Duplicate rows merge into one local record while retaining their source evidence. Suppressing a lead preserves its identity so later imports cannot silently reactivate it.
+With Labs enabled, open **Lead intelligence** to upload or paste CSV data. Recognized columns include `company`, `website`, `email`, `phone`, `location`, `source_url`, and common aliases. Choose `LinkedIn export` only for a file you exported or are authorized to use; Socium does not scrape LinkedIn pages. Duplicate rows merge into one local record while retaining their source evidence. Suppressing a lead preserves its identity so later imports cannot silently reactivate it.
 
 Before qualification, configure the **Ideal customer profile** in Lead intelligence. Saving it deterministically rescales every local lead from 0–100 and new imports are scored immediately. Open any score to see its reason codes and point changes. A manual correction requires a written reason, remains visibly separate from the underlying ICP score, and can be cleared at any time.
 
 Open a lead's **Reviewed outreach** control to record the legal basis, consent state, supporting purpose, and retention review date. Only a non-suppressed lead with an email and a current, internally consistent review can generate an AI email draft. Editing increments the revision and clears approval. An exact approved revision can be downloaded as CSV, while **Data controls** exports the complete lead package as JSON or permanently deletes the local lead and its drafts after typed confirmation. No outreach send connector is included in v1.0.
 
-With Labs enabled, open **Local SEO lab** and enter a public website URL to create a deterministic baseline. LocalGrowth checks the HTTP response, indexing directives, mobile viewport, canonical, encoding, response time, title, description, headings, visible copy, image alt coverage, internal links, structured data, and Open Graph fields. It stores only derived metrics, weighted checks, and recommendations—not the page HTML. A future-dated one-off snapshot can be placed in the same restart-safe SQLite worker used by publishing jobs; the SEO screen keeps those read-only jobs separate from publication jobs.
+With Labs enabled, open **Local SEO lab** and enter a public website URL to create a deterministic baseline. Socium checks the HTTP response, indexing directives, mobile viewport, canonical, encoding, response time, title, description, headings, visible copy, image alt coverage, internal links, structured data, and Open Graph fields. It stores only derived metrics, weighted checks, and recommendations—not the page HTML. A future-dated one-off snapshot can be placed in the same restart-safe SQLite worker used by publishing jobs; the SEO screen keeps those read-only jobs separate from publication jobs.
 
 For live business discovery, create a restricted Google Maps API key with Places API (New) enabled, open **Lead intelligence → Connection**, and select **Save & test**. Search results remain transient browser state with Google Maps attribution and are never copied into SQLite. Select **Crawl public site** to inspect the business's own website under its robots rules, review the extracted fields, and explicitly select **Add to vault**. See the local [terms](docs/TERMS.md) and [privacy notice](docs/PRIVACY.md).
 
@@ -127,9 +127,9 @@ pnpm build
 pnpm start
 ```
 
-The native launcher waits for FastAPI migrations and health checks before starting the web console. The default data directory is `./data`; set `LOCALGROWTH_DATA_DIR` to another local directory if needed. Media originals and previews are stored under its `media/` subdirectory.
+The native launcher waits for FastAPI migrations and health checks before starting the web console. The default data directory is `./data`; set `SOCIUM_DATA_DIR` to another local directory if needed. Media originals and previews are stored under its `media/` subdirectory.
 
-Back up the complete data directory together. `localgrowth.db` needs its matching `master.key` to decrypt connector secrets. If `localgrowth.json` from v0.2 exists when SQLite is first created, its settings, posts, audit events, and encrypted secrets are imported automatically while the JSON file remains untouched.
+Back up the complete data directory together. `socium.db` needs its matching `master.key` to decrypt connector secrets. If `socium.json` from v0.2 exists when SQLite is first created, its settings, posts, audit events, and encrypted secrets are imported automatically while the JSON file remains untouched.
 
 ## Optional Docker localhost run
 
@@ -137,23 +137,23 @@ Back up the complete data directory together. `localgrowth.db` needs its matchin
 docker compose up --build
 ```
 
-Compose runs the FastAPI service on a private container network and exposes only `127.0.0.1:3000`. Application data lives in the `localgrowth-data` volume. When connecting Ollama running on the host, use `http://host.docker.internal:11434` in provider settings.
+Compose runs the FastAPI service on a private container network and exposes only `127.0.0.1:3000`. Application data lives in the `socium-data` volume. When connecting Ollama running on the host, use `http://host.docker.internal:11434` in provider settings.
 
 ## Telegram approvals without hosting
 
-Telegram notifications and publishing are outbound API calls. Approval buttons use Telegram `getUpdates` long polling from the local worker, so no domain, public HTTPS endpoint, tunnel, webhook, or LocalGrowth cloud service is required.
+Telegram notifications and publishing are outbound API calls. Approval buttons use Telegram `getUpdates` long polling from the local worker, so no domain, public HTTPS endpoint, tunnel, webhook, or Socium cloud service is required.
 
-The application must be running to receive a new Telegram decision. Telegram retains pending bot updates temporarily; LocalGrowth stores the processed update ID in SQLite to reject replays after restart.
+The application must be running to receive a new Telegram decision. Telegram retains pending bot updates temporarily; Socium stores the processed update ID in SQLite to reject replays after restart.
 
 ## Slack approvals without hosting
 
 Create a Slack app, enable Socket Mode and interactivity, add the `chat:write` bot scope, and create an app-level token with `connections:write`. Install the app in your workspace, invite it to the approval channel, then save the channel ID, `xoxb-` bot token, and `xapp-` app token under Integrations.
 
-After **Save & test**, LocalGrowth opens an outbound WebSocket and shows `Listening`. No public request URL is needed. The application must remain running to receive decisions; connector errors and retries stay visible in the local UI.
+After **Save & test**, Socium opens an outbound WebSocket and shows `Listening`. No public request URL is needed. The application must remain running to receive decisions; connector errors and retries stay visible in the local UI.
 
 ## Local-only behavior
 
-- No LocalGrowth account, cloud database, billing system, or telemetry endpoint is required.
+- No Socium account, cloud database, billing system, or telemetry endpoint is required.
 - Native services bind to `127.0.0.1` by default.
 - The operator's computer must be on for scheduled automation and approval listeners to run.
 - Local drafts, dashboard approvals, audit history, and Ollama remain available without internet.
@@ -172,7 +172,7 @@ pnpm build
 
 The Playwright suite starts a real Next.js console, FastAPI service, and temporary SQLite database on loopback ports. It uses deterministic local stand-ins only for external APIs, then verifies provider setup, draft generation, revision-bound approval, multi-platform publishing, a queued AI image save/test/generate/progress/provenance workflow, a real media upload/metadata/transform/delete lifecycle, automated WCAG A/AA checks, and mobile keyboard navigation. Browser artifacts are written under `output/playwright/`.
 
-Install Chromium once with `pnpm test:e2e:install`. If the Playwright browser download is unavailable but Google Chrome is already installed, run with `LOCALGROWTH_E2E_BROWSER_CHANNEL=chrome` (PowerShell: `$env:LOCALGROWTH_E2E_BROWSER_CHANNEL='chrome'`).
+Install Chromium once with `pnpm test:e2e:install`. If the Playwright browser download is unavailable but Google Chrome is already installed, run with `SOCIUM_E2E_BROWSER_CHANNEL=chrome` (PowerShell: `$env:SOCIUM_E2E_BROWSER_CHANNEL='chrome'`).
 
 Run every check together with:
 
@@ -195,12 +195,12 @@ pnpm check
 - `docs/ROADMAP.md` — milestones and acceptance criteria.
 - `docs/COMPLIANCE.md` — discovery, publishing, outreach, and retention guardrails.
 - `docs/TERMS.md` and `docs/PRIVACY.md` — localhost product/provider terms and data-flow disclosure.
-- `design-system/localgrowth-os/MASTER.md` — persisted visual system.
+- `design-system/socium/MASTER.md` — persisted visual system.
 - `Dockerfile`, `backend/Dockerfile`, and `compose.yaml` — loopback-only container packaging.
 
 ## Safety boundary
 
-LocalGrowth OS will not ship credential theft, CAPTCHA bypasses, rate-limit evasion, or unapproved LinkedIn scraping. LinkedIn discovery must use an approved API/provider, user-owned export, CRM sync, or manual import. Google business discovery should use the Places API or another licensed source and honor its attribution and storage rules. Website crawling must respect robots directives and configurable rate limits.
+Socium will not ship credential theft, CAPTCHA bypasses, rate-limit evasion, or unapproved LinkedIn scraping. LinkedIn discovery must use an approved API/provider, user-owned export, CRM sync, or manual import. Google business discovery should use the Places API or another licensed source and honor its attribution and storage rules. Website crawling must respect robots directives and configurable rate limits.
 
 ## License
 

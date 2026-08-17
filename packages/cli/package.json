@@ -1,16 +1,16 @@
 {
-  "name": "localgrowth-os",
+  "name": "socium",
   "version": "1.0.0",
-  "description": "Cross-platform installer and local runtime manager for LocalGrowth OS.",
+  "description": "Cross-platform installer and local runtime manager for Socium.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-.git",
+    "url": "git+https://github.com/waleed-khan13/socium.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-#readme",
+  "homepage": "https://github.com/waleed-khan13/socium#readme",
   "bugs": {
-    "url": "https://github.com/waleed-khan13/PMM-Personal-Marketing-Manager-/issues"
+    "url": "https://github.com/waleed-khan13/socium/issues"
   },
   "keywords": [
     "ai-automation",
@@ -21,7 +21,7 @@
   ],
   "type": "module",
   "bin": {
-    "localgrowth": "./bin/localgrowth.mjs"
+    "socium": "./bin/socium.mjs"
   },
   "files": [
     "bin",
@@ -36,7 +36,7 @@
   },
   "scripts": {
     "bundle": "node scripts/build-bundle.mjs",
-    "localgrowth": "node bin/localgrowth.mjs",
+    "socium": "node bin/socium.mjs",
     "manifest": "node scripts/assemble-manifest.mjs",
     "test": "node --test"
   },

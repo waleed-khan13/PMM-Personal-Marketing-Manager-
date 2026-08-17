@@ -4,7 +4,7 @@ This document describes product safeguards, not legal advice. Deployers remain r
 
 ## LinkedIn
 
-LocalGrowth OS does not scrape LinkedIn pages or automate engagement through browser sessions. LinkedIn's User Agreement prohibits software and crawlers that scrape profiles/data and unauthorized bots that create or interact with posts. The product supports:
+Socium does not scrape LinkedIn pages or automate engagement through browser sessions. LinkedIn's User Agreement prohibits software and crawlers that scrape profiles/data and unauthorized bots that create or interact with posts. The product supports:
 
 - Official posting APIs when the user's app/account has the required access.
 - Approved partner/data-provider adapters under the deployer's own agreement.
@@ -32,7 +32,7 @@ References:
 ## Public websites
 
 - Respect robots directives and site terms.
-- Identify the crawler with the LocalGrowth project URL; a configurable operator contact URL remains roadmap work.
+- Identify the crawler with the Socium project URL; a configurable operator contact URL remains roadmap work.
 - Enforce per-host concurrency, delay, timeout, response-size, and allowed-content-type limits.
 - Do not log in, bypass paywalls/CAPTCHAs, evade blocks, or probe private networks.
 - Collect only fields needed for the configured business purpose and retain evidence/source URLs.
@@ -57,9 +57,9 @@ Version 0.8 keeps local deterministic ICP profiles, full-vault rescoring, explan
 - The core creates drafts; bulk send is not enabled by default.
 - Require a configured legal basis/consent state, sender identity, suppression check, and jurisdiction policy before sending.
 - Enforce unsubscribe/opt-out immediately and across all connectors.
-- Treat a configured WhatsApp review recipient as an explicit operator-selected destination. LocalGrowth sends only an approved-template draft preview, never chooses recipients from scraped lead data, and never represents a notification as consent for outreach.
+- Treat a configured WhatsApp review recipient as an explicit operator-selected destination. Socium sends only an approved-template draft preview, never chooses recipients from scraped lead data, and never represents a notification as consent for outreach.
 - WhatsApp Cloud delivery sends the configured recipient number, template metadata, and bounded draft content to Meta. The access token remains encrypted locally and is used only in the bearer header. Strict-localhost mode does not expose an inbound webhook, so delivery receipts and interactive WhatsApp approvals are not claimed.
-- Media uploads remain inside the operator's configured data directory. LocalGrowth validates raster content and generates local previews/transforms, but does not upload those files to a LocalGrowth service. An operator-entered public source URL is an explicit statement that the same asset is already remotely available; recording it does not perform an upload or grant LocalGrowth redistribution rights.
+- Media uploads remain inside the operator's configured data directory. Socium validates raster content and generates local previews/transforms, but does not upload those files to a Socium service. An operator-entered public source URL is an explicit statement that the same asset is already remotely available; recording it does not perform an upload or grant Socium redistribution rights.
 - AI image generation is explicitly initiated by the operator and the local worker executes one job at a time. Hosted providers receive the prompt and selected generation controls under the operator's own account and terms; local Automatic1111/Forge or ComfyUI keeps that request on the configured local endpoint. A ComfyUI workflow is operator-supplied API-format JSON, not generated or expanded by the model, and only declared placeholders are substituted. Provider keys are encrypted separately, never returned to the browser, and never stored in generation history. Valid output enters the same private media review boundary and is not automatically attached to or published as a post.
 - Image queue records expose status, bounded progress, attempt count, cancellation state, provider prompt ID, and final local asset ID. Cancellation removes the tracked ComfyUI prompt from its queue and interrupts execution only after that prompt was observed running. Restart recovery and retries are safe because generation has no publication side effect; output still requires human review.
 - Generated assets retain provider, model, prompt, negative prompt when applicable, and non-secret parameters so an operator can distinguish AI output and review its provenance. Identical output bytes may reuse an existing asset, but each successful generation still receives a history record.

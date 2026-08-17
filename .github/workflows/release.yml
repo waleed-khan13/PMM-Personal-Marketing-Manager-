@@ -124,7 +124,7 @@ jobs:
 
       - name: Build and smoke-test the installed application
         env:
-          LOCALGROWTH_RELEASE_TARGET: ${{ matrix.target }}
+          SOCIUM_RELEASE_TARGET: ${{ matrix.target }}
         run: |
           pnpm release:bundle -- --target ${{ matrix.target }}
           pnpm release:bundle:smoke
@@ -132,11 +132,11 @@ jobs:
       - name: Upload the native release asset
         uses: actions/upload-artifact@v7
         with:
-          name: localgrowth-release-${{ matrix.target }}
+          name: socium-release-${{ matrix.target }}
           path: |
-            release/localgrowth-os-*-${{ matrix.target }}.tar.gz
-            release/localgrowth-os-*-${{ matrix.target }}.tar.gz.sha256
-            release/localgrowth-asset-${{ matrix.target }}.json
+            release/socium-*-${{ matrix.target }}.tar.gz
+            release/socium-*-${{ matrix.target }}.tar.gz.sha256
+            release/socium-asset-${{ matrix.target }}.json
           if-no-files-found: error
           compression-level: 0
 
@@ -163,21 +163,21 @@ jobs:
       - name: Download native assets
         uses: actions/download-artifact@v7
         with:
-          pattern: localgrowth-release-*
+          pattern: socium-release-*
           path: release
           merge-multiple: true
 
       - name: Assemble the checksummed release manifest
-        run: pnpm --filter localgrowth-os manifest release
+        run: pnpm --filter socium manifest release
 
       - name: Create or refresh the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release/localgrowth-os-*.tar.gz release/localgrowth-os-*.sha256 release/localgrowth-manifest.json --clobber
+            gh release upload "$RELEASE_TAG" release/socium-*.tar.gz release/socium-*.sha256 release/socium-manifest.json --clobber
           else
-            gh release create "$RELEASE_TAG" release/localgrowth-os-*.tar.gz release/localgrowth-os-*.sha256 release/localgrowth-manifest.json --verify-tag --generate-notes --title "LocalGrowth OS ${RELEASE_TAG#v}"
+            gh release create "$RELEASE_TAG" release/socium-*.tar.gz release/socium-*.sha256 release/socium-manifest.json --verify-tag --generate-notes --title "Socium ${RELEASE_TAG#v}"
           fi
 
   npm-publish:
@@ -205,8 +205,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${RELEASE_TAG#v}"
-          if npm view "localgrowth-os@$VERSION" version >/dev/null 2>&1; then
-            echo "localgrowth-os@$VERSION is already published."
+          if npm view "socium@$VERSION" version >/dev/null 2>&1; then
+            echo "socium@$VERSION is already published."
           else
             npm publish --access public --provenance
           fi

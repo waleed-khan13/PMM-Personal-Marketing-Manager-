@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** LocalGrowth OS
+**Project:** Socium
 **Generated:** 2026-08-01 06:03:58
 **Category:** RPA / Automation Dashboard
 **Design Dials:** Variance 6/10 (Balanced / Modern) | Motion 3/10 (Subtle) | Density 8/10 (Dense / Dashboard)

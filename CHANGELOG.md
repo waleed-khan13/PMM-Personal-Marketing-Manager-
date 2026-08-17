@@ -2,6 +2,12 @@
 
 All notable user-facing changes are documented here.
 
+## Unreleased
+
+### Changed
+
+- Rebranded the complete product and distribution surface as Socium, including the UI, `socium` npm/CLI package, `SOCIUM_*` configuration, native runtime assets, local application-data paths, documentation, and release automation.
+
 ## 1.0.0 - 2026-08-10
 
 ### Added
@@ -11,7 +17,7 @@ All notable user-facing changes are documented here.
 - Telegram and Slack approval decisions plus WhatsApp approved-template review notifications.
 - Durable SQLite queues for scheduled publishing and AI image generation, including restart recovery, progress, cancellation, and retry.
 - Opt-in Labs flag for the retained Lead intelligence and Local SEO preview workspaces.
-- `npx localgrowth-os onboard` installer and lifecycle CLI for checksummed Windows, macOS, and Linux native bundles.
+- `npx socium onboard` installer and lifecycle CLI for checksummed Windows, macOS, and Linux native bundles.
 - Standalone FastAPI runtime with embedded migrations and a portable Next.js production runtime; end users need only Node.js 20.9+.
 - Tag-driven CI release automation for per-platform builds, native smoke tests, SHA-256 assets, the update manifest, and npm publication.
 

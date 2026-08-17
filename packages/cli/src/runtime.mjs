@@ -6,7 +6,7 @@ import path from "node:path";
 import { DEFAULT_API_PORT, DEFAULT_WEB_PORT } from "./constants.mjs";
 import { loadInstallation } from "./installation.mjs";
 import { backendFileName } from "./platform.mjs";
-import { localgrowthPaths } from "./paths.mjs";
+import { sociumPaths } from "./paths.mjs";
 
 async function exists(filePath) {
   try {
@@ -39,7 +39,7 @@ async function waitForHttp(url, child, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
   while (Date.now() < deadline) {
-    if (child?.exitCode !== null) throw new Error(`LocalGrowth process exited before ${url} became ready.`);
+    if (child?.exitCode !== null) throw new Error(`Socium process exited before ${url} became ready.`);
     try {
       const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(1_500) });
       if (response.ok) return response;
@@ -84,14 +84,14 @@ async function alreadyRunning(webPort) {
       signal: AbortSignal.timeout(1_500),
     });
     const body = await response.json();
-    return response.ok && body?.service === "localgrowth-api";
+    return response.ok && body?.service === "socium-api";
   } catch {
     return false;
   }
 }
 
 export async function startRuntime({
-  paths = localgrowthPaths(),
+  paths = sociumPaths(),
   webPort = DEFAULT_WEB_PORT,
   apiPort = DEFAULT_API_PORT,
   shouldOpenBrowser = true,
@@ -101,7 +101,7 @@ export async function startRuntime({
   if (!(await isPortAvailable(webPort))) {
     if (await alreadyRunning(webPort)) {
       const url = `http://127.0.0.1:${webPort}`;
-      log(`LocalGrowth OS is already running at ${url}`);
+      log(`Socium is already running at ${url}`);
       if (shouldOpenBrowser) openBrowser(url);
       return { alreadyRunning: true, url };
     }
@@ -112,10 +112,10 @@ export async function startRuntime({
   }
 
   const installation = await loadInstallation(paths);
-  if (!installation) throw new Error("LocalGrowth OS is not installed. Run `localgrowth onboard` first.");
+  if (!installation) throw new Error("Socium is not installed. Run `socium onboard` first.");
   const layout = runtimeLayout(installation);
   if (!(await exists(layout.apiExecutable)) || !(await exists(layout.webServer))) {
-    throw new Error("The installed runtime is incomplete. Run `localgrowth update --force`.");
+    throw new Error("The installed runtime is incomplete. Run `socium update --force`.");
   }
 
   const children = new Set();
@@ -141,10 +141,10 @@ export async function startRuntime({
 
   const sharedEnvironment = {
     ...process.env,
-    LOCALGROWTH_API_HOST: "127.0.0.1",
-    LOCALGROWTH_API_PORT: String(apiPort),
-    LOCALGROWTH_DATA_DIR: paths.dataDirectory,
-    LOCALGROWTH_ENABLE_LABS: labsEnabled ? "1" : "0",
+    SOCIUM_API_HOST: "127.0.0.1",
+    SOCIUM_API_PORT: String(apiPort),
+    SOCIUM_DATA_DIR: paths.dataDirectory,
+    SOCIUM_ENABLE_LABS: labsEnabled ? "1" : "0",
   };
 
   try {
@@ -160,13 +160,13 @@ export async function startRuntime({
         ...sharedEnvironment,
         HOSTNAME: "127.0.0.1",
         PORT: String(webPort),
-        LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
+        SOCIUM_API_URL: `http://127.0.0.1:${apiPort}`,
         NODE_ENV: "production",
       },
     });
     const url = `http://127.0.0.1:${webPort}`;
     await waitForHttp(`${url}/api/health`, web);
-    log(`LocalGrowth OS ${installation.version} is running at ${url}`);
+    log(`Socium ${installation.version} is running at ${url}`);
     if (shouldOpenBrowser) openBrowser(url);
 
     const exitCode = await new Promise((resolve) => {

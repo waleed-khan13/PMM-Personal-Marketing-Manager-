@@ -3,7 +3,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import type { PublicAppState } from "../src/lib/app-types";
 
-const mockBaseUrl = `http://127.0.0.1:${process.env.LOCALGROWTH_E2E_MOCK_PORT ?? "4100"}`;
+const mockBaseUrl = `http://127.0.0.1:${process.env.SOCIUM_E2E_MOCK_PORT ?? "4100"}`;
 
 test("rejects cross-origin requests at the localhost API proxy", async ({ request }) => {
   const response = await request.post("/api/state", {
@@ -49,7 +49,7 @@ async function expectNoAccessibilityViolations(page: Page, testInfo: TestInfo, n
 test("runs real publishing workflows and a WhatsApp draft notification", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
-  await expect(page.getByText(/LOCAL SOCIAL.*v1\.0\.0/)).toBeVisible();
+  await expect(page.getByText(/SOCIUM LOCAL.*v1\.0\.0/)).toBeVisible();
   const primaryNavigation = page.getByRole("navigation", { name: "Primary" });
   await expect(primaryNavigation.getByRole("button", { name: "Lead intelligence" })).toHaveCount(0);
   await expect(primaryNavigation.getByRole("button", { name: "Local SEO lab" })).toHaveCount(0);
@@ -124,7 +124,7 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   await editDialog
     .getByLabel("Post body")
     .fill("Define one customer problem, publish one useful answer, and review the result before repeating the cycle.");
-  await editDialog.getByLabel("Hashtags").fill("#LocalGrowth #Reviewed");
+  await editDialog.getByLabel("Hashtags").fill("#Socium #Reviewed");
   await editDialog.getByRole("button", { name: "Save new version" }).click();
   await expect(page.getByText("Draft updated")).toBeVisible();
 
@@ -500,7 +500,7 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   await whatsappForm.getByLabel("Phone Number ID").fill("155500011122233");
   await whatsappForm.getByLabel("Review recipient").fill("+92 300 1234567");
   await whatsappForm.getByLabel("Graph API version").fill("v25.0");
-  await whatsappForm.getByLabel("Template name").fill("localgrowth_draft_review");
+  await whatsappForm.getByLabel("Template name").fill("socium_draft_review");
   await whatsappForm.getByLabel("Template language").fill("en_US");
   await whatsappForm.getByLabel("Permanent access token").fill("e2e-whatsapp-access-token");
   await whatsappForm.getByRole("button", { name: "Save & test" }).click();
@@ -565,7 +565,7 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
     to: "923001234567",
     type: "template",
     template: {
-      name: "localgrowth_draft_review",
+      name: "socium_draft_review",
       language: { code: "en_US" },
       components: [
         {

@@ -124,7 +124,7 @@ export function WhatsAppConnectorCard({
           </div>
           <div>
             <CardTitle>WhatsApp draft notifications</CardTitle>
-            <CardDescription>Approved-template alerts for a reviewer while LocalGrowth stays local.</CardDescription>
+            <CardDescription>Approved-template alerts for a reviewer while Socium stays local.</CardDescription>
           </div>
         </div>
         <CardAction><StatusBadge account={account} /></CardAction>
@@ -182,7 +182,7 @@ export function WhatsAppConnectorCard({
                 maxLength={512}
                 onChange={(event) => onChange({ templateName: event.target.value })}
                 pattern="[a-z0-9_]+"
-                placeholder="localgrowth_draft_review"
+                placeholder="socium_draft_review"
                 required
                 value={form.templateName}
               />
@@ -252,7 +252,7 @@ export function WhatsAppConnectorCard({
             <BellRing className="mt-0.5 size-4 shrink-0 text-emerald-400" />
             <div>
               <p className="text-xs font-medium text-zinc-200">Notification only</p>
-              <p className="mt-1 text-[11px] leading-5 text-zinc-600">WhatsApp receives a preview. Approve or reject from LocalGrowth, Telegram, or Slack.</p>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-600">WhatsApp receives a preview. Approve or reject from Socium, Telegram, or Slack.</p>
             </div>
           </div>
           <Separator className="bg-zinc-900" />

@@ -513,7 +513,7 @@ async def audit_website(value: str) -> dict[str, Any]:
         timeout = httpx.Timeout(20, connect=8)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             robots, _delay = await robots_policy(client, start_url)
-            if not robots.can_fetch("LocalGrowthOS", start_url):
+            if not robots.can_fetch("Socium", start_url):
                 raise AppError("Website robots.txt does not allow this page to be audited.", 403)
             response = await read_public_page(
                 client,

@@ -8,10 +8,10 @@ const executable = path.join(
   projectRoot,
   "backend",
   "dist",
-  process.platform === "win32" ? "localgrowth-api.exe" : "localgrowth-api",
+  process.platform === "win32" ? "socium-api.exe" : "socium-api",
 );
-const port = Number(process.env.LOCALGROWTH_BUNDLE_SMOKE_PORT || "8199");
-const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), "localgrowth-bundle-smoke-"));
+const port = Number(process.env.SOCIUM_BUNDLE_SMOKE_PORT || "8199");
+const runtimeRoot = await mkdtemp(path.join(os.tmpdir(), "socium-bundle-smoke-"));
 const dataDirectory = path.join(runtimeRoot, "data");
 
 await access(executable);
@@ -19,8 +19,8 @@ const child = spawn(executable, ["--host", "127.0.0.1", "--port", String(port)],
   cwd: projectRoot,
   env: {
     ...process.env,
-    LOCALGROWTH_DATA_DIR: dataDirectory,
-    LOCALGROWTH_SLACK_SOCKET_MODE: "0",
+    SOCIUM_DATA_DIR: dataDirectory,
+    SOCIUM_SLACK_SOCKET_MODE: "0",
   },
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
@@ -90,7 +90,7 @@ try {
     signal: AbortSignal.timeout(5_000),
   });
   if (!providerResponse.ok) throw new Error(`Bundled API provider write returned ${providerResponse.status}.`);
-  await access(path.join(dataDirectory, "localgrowth.db"));
+  await access(path.join(dataDirectory, "socium.db"));
   await access(path.join(dataDirectory, "master.key"));
 
   if (health.version !== "1.0.0" || state.features?.edition !== "social-v1") {

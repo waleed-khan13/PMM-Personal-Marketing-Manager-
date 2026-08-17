@@ -468,7 +468,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
               </div>
               <div className="space-y-2"><Label htmlFor="image-provider-url">Base URL</Label><Input id="image-provider-url" onChange={(event) => setImageProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} required type="url" value={imageProviderForm.baseUrl} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "Start WebUI with --api. Forge uses the same endpoint." : imageProviderForm.kind === "comfyui" ? "Default local ComfyUI server: http://127.0.0.1:8188" : "Use an API root or a URL ending in /v1."}</p></div>
               <div className="space-y-2"><Label htmlFor="image-provider-model">Model {imageProviderForm.kind !== "openai-images" ? "(optional label/checkpoint)" : ""}</Label><Input id="image-provider-model" onChange={(event) => setImageProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={imageProviderForm.kind === "automatic1111" ? "Use active checkpoint" : imageProviderForm.kind === "comfyui" ? "Workflow model" : "gpt-image-2"} required={imageProviderForm.kind === "openai-images"} value={imageProviderForm.model} /></div>
-              {imageProviderForm.kind === "comfyui" ? <div className="space-y-2"><Label htmlFor="comfy-workflow">Workflow (API format JSON)</Label><Textarea className="min-h-32 font-mono text-[11px]" id="comfy-workflow" maxLength={200000} onChange={(event) => setImageProviderForm((current) => ({ ...current, workflowJson: event.target.value }))} placeholder={imageProvider.hasWorkflow ? "Stored workflow — leave blank to keep it" : "Paste ComfyUI's Save (API Format) JSON. Replace values with {{prompt}}, {{negative_prompt}}, {{seed}}, {{width}}, {{height}}, {{steps}}, or {{guidance_scale}}."} value={imageProviderForm.workflowJson} /><p className="text-[10px] leading-4 text-zinc-600">The workflow stays on this computer. LocalGrowth injects only declared placeholders and reads the first image output.</p></div> : null}
+              {imageProviderForm.kind === "comfyui" ? <div className="space-y-2"><Label htmlFor="comfy-workflow">Workflow (API format JSON)</Label><Textarea className="min-h-32 font-mono text-[11px]" id="comfy-workflow" maxLength={200000} onChange={(event) => setImageProviderForm((current) => ({ ...current, workflowJson: event.target.value }))} placeholder={imageProvider.hasWorkflow ? "Stored workflow — leave blank to keep it" : "Paste ComfyUI's Save (API Format) JSON. Replace values with {{prompt}}, {{negative_prompt}}, {{seed}}, {{width}}, {{height}}, {{steps}}, or {{guidance_scale}}."} value={imageProviderForm.workflowJson} /><p className="text-[10px] leading-4 text-zinc-600">The workflow stays on this computer. Socium injects only declared placeholders and reads the first image output.</p></div> : null}
               <div className="space-y-2"><Label htmlFor="image-provider-key">API key</Label><Input autoComplete="off" id="image-provider-key" onChange={(event) => setImageProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={imageProvider.hasApiKey ? "Stored — blank keeps current key" : "Optional for local; required by most hosted APIs"} type="password" value={imageProviderForm.apiKey} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "For WebUI --api-auth, enter username:password." : "Sent only as a bearer header and encrypted at rest."}</p></div>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(false)} type="button" variant="outline">{busy === "image-provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
@@ -506,7 +506,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
               </div>
               <div>
                 <CardTitle>Import a local image</CardTitle>
-                <CardDescription>Verified raster files are stored under the private LocalGrowth data directory.</CardDescription>
+                <CardDescription>Verified raster files are stored under the private Socium data directory.</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -652,7 +652,7 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
           <div>
             <div className="mx-auto grid size-12 place-items-center rounded-lg border border-zinc-800 bg-black text-zinc-600"><ImageIcon className="size-5" /></div>
             <h2 className="mt-4 text-sm font-medium text-zinc-200">No media stored yet</h2>
-            <p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Upload the first campaign image. LocalGrowth will verify, fingerprint, preview, and store it locally.</p>
+            <p className="mt-2 max-w-md text-xs leading-5 text-zinc-600">Upload the first campaign image. Socium will verify, fingerprint, preview, and store it locally.</p>
           </div>
         </div>
       )}

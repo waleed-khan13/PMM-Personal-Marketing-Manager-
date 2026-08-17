@@ -25,7 +25,7 @@ function localApiBase(value: string) {
     || url.hash
   ) {
     throw new Error(
-      "LOCALGROWTH_API_URL must target localhost or the bundled Docker API without credentials or query data.",
+      "SOCIUM_API_URL must target localhost or the bundled Docker API without credentials or query data.",
     );
   }
   return url;
@@ -57,13 +57,13 @@ function isTrustedLocalRequest(request: Request) {
 async function proxyRequest(request: Request, context: RouteContext) {
   if (!isTrustedLocalRequest(request)) {
     return NextResponse.json(
-      { ok: false, error: "LocalGrowth OS only accepts same-origin requests on localhost." },
+      { ok: false, error: "Socium only accepts same-origin requests on localhost." },
       { status: 403 },
     );
   }
 
   const { path } = await context.params;
-  const configuredBase = process.env.LOCALGROWTH_API_URL || "http://127.0.0.1:8000";
+  const configuredBase = process.env.SOCIUM_API_URL || "http://127.0.0.1:8000";
   const sourceUrl = new URL(request.url);
   const headers = new Headers(request.headers);
 
@@ -82,7 +82,7 @@ async function proxyRequest(request: Request, context: RouteContext) {
   ]) {
     headers.delete(header);
   }
-  headers.set("x-localgrowth-proxy", "nextjs");
+  headers.set("x-socium-proxy", "nextjs");
 
   try {
     const baseUrl = localApiBase(configuredBase);
@@ -113,7 +113,7 @@ async function proxyRequest(request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         ok: false,
-        error: "The local FastAPI service is unavailable. Restart LocalGrowth OS and try again.",
+        error: "The local FastAPI service is unavailable. Restart Socium and try again.",
       },
       { status: 503 },
     );

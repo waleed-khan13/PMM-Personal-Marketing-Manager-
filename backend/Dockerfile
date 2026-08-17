@@ -6,7 +6,7 @@ WORKDIR /app/backend
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV UV_PROJECT_ENVIRONMENT=/app/backend/.venv
-ENV LOCALGROWTH_DATA_DIR=/data
+ENV SOCIUM_DATA_DIR=/data
 
 COPY --from=uv /uv /uvx /bin/
 COPY pyproject.toml uv.lock ./
@@ -14,11 +14,11 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
 RUN uv sync --frozen --no-dev
-RUN addgroup --system localgrowth \
-    && adduser --system --ingroup localgrowth --no-create-home localgrowth \
+RUN addgroup --system socium \
+    && adduser --system --ingroup socium --no-create-home socium \
     && mkdir -p /data \
-    && chown localgrowth:localgrowth /data
+    && chown socium:socium /data
 
 EXPOSE 8000
-USER localgrowth
+USER socium
 CMD ["/app/backend/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

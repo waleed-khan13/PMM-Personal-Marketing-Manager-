@@ -76,7 +76,7 @@ def validate_instagram_media_url(value: str) -> str:
 
 def _graph_base_url() -> str:
     return validate_instagram_graph_base_url(
-        os.getenv("LOCALGROWTH_INSTAGRAM_GRAPH_BASE_URL", DEFAULT_INSTAGRAM_GRAPH_BASE_URL)
+        os.getenv("SOCIUM_INSTAGRAM_GRAPH_BASE_URL", DEFAULT_INSTAGRAM_GRAPH_BASE_URL)
     )
 
 

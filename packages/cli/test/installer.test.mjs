@@ -12,7 +12,7 @@ import { main } from "../src/cli.mjs";
 import { diagnose } from "../src/doctor.mjs";
 import { installRelease, loadInstallation } from "../src/installation.mjs";
 import { resolveAssetSource, validateManifest } from "../src/manifest.mjs";
-import { localgrowthPaths, localgrowthRoot } from "../src/paths.mjs";
+import { sociumPaths, sociumRoot } from "../src/paths.mjs";
 import { backendFileName, releaseTarget } from "../src/platform.mjs";
 import { uninstall } from "../src/uninstall.mjs";
 
@@ -23,7 +23,7 @@ async function checksum(filePath) {
 }
 
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "localgrowth-cli-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "socium-cli-"));
   const bundle = path.join(root, "bundle");
   const target = releaseTarget();
   const backend = path.join(bundle, "backend", backendFileName());
@@ -34,7 +34,7 @@ async function fixture() {
   if (process.platform !== "win32") await chmod(backend, 0o755);
   await writeFile(
     path.join(bundle, "bundle.json"),
-    JSON.stringify({ schemaVersion: 1, product: "localgrowth-os", version: "1.0.0", target }),
+    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.0", target }),
   );
   const archive = path.join(root, "bundle.tar.gz");
   await tar.c({ cwd: bundle, file: archive, gzip: true }, ["bundle.json", "backend", "web"]);
@@ -43,26 +43,26 @@ async function fixture() {
     manifest,
     JSON.stringify({
       schemaVersion: 1,
-      product: "localgrowth-os",
+      product: "socium",
       version: "1.0.0",
       assets: { [target]: { url: path.basename(archive), sha256: await checksum(archive) } },
     }),
   );
-  return { archive, manifest, paths: localgrowthPaths({ environment: { LOCALGROWTH_HOME: path.join(root, "home") } }), root, target };
+  return { archive, manifest, paths: sociumPaths({ environment: { SOCIUM_HOME: path.join(root, "home") } }), root, target };
 }
 
 test("maps application data to native OS locations", () => {
   assert.equal(
-    localgrowthRoot({ platform: "win32", homeDirectory: "C:\\Users\\Ada", environment: { LOCALAPPDATA: "C:\\Local" } }),
-    path.resolve("C:\\Local", "LocalGrowthOS"),
+    sociumRoot({ platform: "win32", homeDirectory: "C:\\Users\\Ada", environment: { LOCALAPPDATA: "C:\\Local" } }),
+    path.resolve("C:\\Local", "Socium"),
   );
   assert.equal(
-    localgrowthRoot({ platform: "darwin", homeDirectory: "/Users/ada", environment: {} }),
-    path.resolve("/Users/ada/Library/Application Support/LocalGrowthOS"),
+    sociumRoot({ platform: "darwin", homeDirectory: "/Users/ada", environment: {} }),
+    path.resolve("/Users/ada/Library/Application Support/Socium"),
   );
   assert.equal(
-    localgrowthRoot({ platform: "linux", homeDirectory: "/home/ada", environment: {} }),
-    path.resolve("/home/ada/.local/share/localgrowth-os"),
+    sociumRoot({ platform: "linux", homeDirectory: "/home/ada", environment: {} }),
+    path.resolve("/home/ada/.local/share/socium"),
   );
 });
 
@@ -82,7 +82,7 @@ test("rejects wrong-product and path-like release metadata", () => {
     /unexpected product/,
   );
   assert.throws(
-    () => validateManifest({ schemaVersion: 1, product: "localgrowth-os", version: "..", assets: { [target]: asset } }, target),
+    () => validateManifest({ schemaVersion: 1, product: "socium", version: "..", assets: { [target]: asset } }, target),
     /invalid version/,
   );
   assert.throws(
@@ -103,8 +103,8 @@ test("installs a checksummed platform bundle and diagnoses the runtime", async (
   });
   assert.equal(installed.version, "1.0.0");
   assert.equal((await loadInstallation(current.paths)).target, current.target);
-  assert.match(await readFile(path.join(installed.runtimePath, "bundle.json"), "utf8"), /localgrowth-os/);
-  assert.ok(messages.some((message) => message.startsWith("Installed LocalGrowth OS")));
+  assert.match(await readFile(path.join(installed.runtimePath, "bundle.json"), "utf8"), /socium/);
+  assert.ok(messages.some((message) => message.startsWith("Installed Socium")));
 
   const report = await diagnose({ paths: current.paths, webPort: 39171, apiPort: 39172 });
   assert.equal(report.ok, true);
@@ -128,7 +128,7 @@ test("uninstall preserves data unless purge is explicit", async (context) => {
   const current = await fixture();
   context.after(() => rm(current.root, { recursive: true, force: true }));
   await installRelease({ manifestSource: current.manifest, paths: current.paths, target: current.target, log() {} });
-  const database = path.join(current.paths.dataDirectory, "localgrowth.db");
+  const database = path.join(current.paths.dataDirectory, "socium.db");
   await writeFile(database, "durable data");
 
   await assert.rejects(uninstall({ paths: current.paths }), /requires --yes/);

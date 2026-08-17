@@ -9,7 +9,7 @@ const requestedRoot = process.argv[2];
 const fragmentsRoot = requestedRoot
   ? path.resolve(projectRoot, requestedRoot)
   : path.join(projectRoot, "release");
-const repository = process.env.GITHUB_REPOSITORY || "waleed-khan13/PMM-Personal-Marketing-Manager-";
+const repository = process.env.GITHUB_REPOSITORY || "waleed-khan13/socium";
 const tag = process.env.RELEASE_TAG || `v${packageJson.version}`;
 const serverUrl = process.env.GITHUB_SERVER_URL || "https://github.com";
 
@@ -18,7 +18,7 @@ async function findFragments(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) found.push(...(await findFragments(entryPath)));
-    else if (/^localgrowth-asset-.+\.json$/.test(entry.name)) found.push(entryPath);
+    else if (/^socium-asset-.+\.json$/.test(entry.name)) found.push(entryPath);
   }
   return found;
 }
@@ -41,11 +41,11 @@ for (const filePath of files) {
 
 const manifest = {
   schemaVersion: 1,
-  product: "localgrowth-os",
+  product: "socium",
   version: packageJson.version,
   publishedAt: new Date().toISOString(),
   assets,
 };
-const outputPath = path.join(fragmentsRoot, "localgrowth-manifest.json");
+const outputPath = path.join(fragmentsRoot, "socium-manifest.json");
 await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 console.log(`Wrote ${outputPath} with ${Object.keys(assets).length} platform assets.`);

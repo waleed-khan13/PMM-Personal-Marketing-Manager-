@@ -2,9 +2,9 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 
 const projectRoot = process.cwd();
-const apiPort = process.env.LOCALGROWTH_API_PORT || "8000";
+const apiPort = process.env.SOCIUM_API_PORT || "8000";
 const webPort = process.env.PORT || "3000";
-const dataDirectory = process.env.LOCALGROWTH_DATA_DIR || path.join(projectRoot, "data");
+const dataDirectory = process.env.SOCIUM_DATA_DIR || path.join(projectRoot, "data");
 const children = new Set();
 let stopping = false;
 
@@ -51,9 +51,9 @@ launch(
     "backend/app",
   ],
   {
-    LOCALGROWTH_API_HOST: "127.0.0.1",
-    LOCALGROWTH_API_PORT: apiPort,
-    LOCALGROWTH_DATA_DIR: dataDirectory,
+    SOCIUM_API_HOST: "127.0.0.1",
+    SOCIUM_API_PORT: apiPort,
+    SOCIUM_DATA_DIR: dataDirectory,
   },
 );
 launch(
@@ -68,6 +68,6 @@ launch(
     "--webpack",
   ],
   {
-    LOCALGROWTH_API_URL: `http://127.0.0.1:${apiPort}`,
+    SOCIUM_API_URL: `http://127.0.0.1:${apiPort}`,
   },
 );

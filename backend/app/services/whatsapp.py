@@ -86,7 +86,7 @@ def validate_template_language(value: str) -> str:
 
 def _graph_base_url() -> str:
     return validate_whatsapp_graph_base_url(
-        os.getenv("LOCALGROWTH_WHATSAPP_GRAPH_BASE_URL", DEFAULT_WHATSAPP_GRAPH_BASE_URL)
+        os.getenv("SOCIUM_WHATSAPP_GRAPH_BASE_URL", DEFAULT_WHATSAPP_GRAPH_BASE_URL)
     )
 
 

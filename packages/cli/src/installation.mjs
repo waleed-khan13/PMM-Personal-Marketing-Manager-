@@ -11,7 +11,7 @@ import * as tar from "tar";
 import { INSTALLATION_SCHEMA_VERSION } from "./constants.mjs";
 import { assertSafeHttpUrl, readJsonSource, resolveAssetSource, validateManifest } from "./manifest.mjs";
 import { backendFileName, releaseTarget } from "./platform.mjs";
-import { isPathInside, localgrowthPaths } from "./paths.mjs";
+import { isPathInside, sociumPaths } from "./paths.mjs";
 
 async function pathExists(target) {
   try {
@@ -23,11 +23,11 @@ async function pathExists(target) {
 }
 
 async function downloadHttp(source, destination) {
-  if (source.startsWith("http://") && process.env.LOCALGROWTH_ALLOW_INSECURE_DOWNLOADS !== "1") {
+  if (source.startsWith("http://") && process.env.SOCIUM_ALLOW_INSECURE_DOWNLOADS !== "1") {
     throw new Error(`Refusing insecure release asset URL: ${source}`);
   }
   const response = await fetch(source, {
-    headers: { "user-agent": "localgrowth-os-cli" },
+    headers: { "user-agent": "socium-cli" },
     redirect: "follow",
     signal: AbortSignal.timeout(120_000),
   });
@@ -59,7 +59,7 @@ async function writeJsonAtomically(filePath, value) {
   await rename(temporary, filePath);
 }
 
-export async function loadInstallation(paths = localgrowthPaths()) {
+export async function loadInstallation(paths = sociumPaths()) {
   let state;
   try {
     state = JSON.parse(await readFile(paths.installationFile, "utf8"));
@@ -68,10 +68,10 @@ export async function loadInstallation(paths = localgrowthPaths()) {
     throw new Error(`Could not read ${paths.installationFile}: ${error.message}`);
   }
   if (state.schemaVersion !== INSTALLATION_SCHEMA_VERSION || typeof state.runtimePath !== "string") {
-    throw new Error("The LocalGrowth installation record is invalid. Run `localgrowth update --force`.");
+    throw new Error("The Socium installation record is invalid. Run `socium update --force`.");
   }
   if (!isPathInside(paths.runtimesDirectory, state.runtimePath)) {
-    throw new Error("The LocalGrowth installation record points outside the managed runtime directory.");
+    throw new Error("The Socium installation record points outside the managed runtime directory.");
   }
   return state;
 }
@@ -81,7 +81,7 @@ async function validateBundle(runtimePath, version, target) {
   const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
   if (
     metadata.schemaVersion !== 1 ||
-    metadata.product !== "localgrowth-os" ||
+    metadata.product !== "socium" ||
     metadata.version !== version ||
     metadata.target !== target
   ) {
@@ -99,7 +99,7 @@ async function validateBundle(runtimePath, version, target) {
 
 export async function installRelease({
   manifestSource,
-  paths = localgrowthPaths(),
+  paths = sociumPaths(),
   target = releaseTarget(),
   force = false,
   log = console.log,
@@ -121,7 +121,7 @@ export async function installRelease({
     throw new Error("Release version resolves outside the managed runtime directory.");
   }
 
-  log(`Downloading LocalGrowth OS ${version} for ${target}...`);
+  log(`Downloading Socium ${version} for ${target}...`);
   try {
     await acquireAsset(assetSource, archivePath);
     const actualChecksum = await sha256File(archivePath);
@@ -167,7 +167,7 @@ export async function installRelease({
       manifestSource,
     };
     await writeJsonAtomically(paths.installationFile, installation);
-    log(`Installed LocalGrowth OS ${version} at ${runtimePath}`);
+    log(`Installed Socium ${version} at ${runtimePath}`);
     return installation;
   } finally {
     await rm(archivePath, { force: true, maxRetries: 20, retryDelay: 200 });
