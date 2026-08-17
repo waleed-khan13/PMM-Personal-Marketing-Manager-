@@ -3,8 +3,23 @@ import "./globals.css";
 import { AppProviders } from "@/components/app-providers";
 
 export const metadata: Metadata = {
-  title: "LocalGrowth OS",
+  metadataBase: new URL("http://localhost:3000"),
+  applicationName: "Socium",
+  title: "Socium — Personal Social Manager",
   description: "Local-first, approval-first AI social publishing automation.",
+  openGraph: {
+    title: "Socium — Personal Social Manager",
+    description: "Local-first, approval-first AI social publishing automation.",
+    type: "website",
+    images: [
+      {
+        url: "/brand/socium-og-image-1200x630.png",
+        width: 1200,
+        height: 630,
+        alt: "Socium — Personal Social Manager",
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

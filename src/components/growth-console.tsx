@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   Activity,
   AlertTriangle,
@@ -270,15 +271,15 @@ function defaultScheduleAt() {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-zinc-700 bg-white text-black shadow-[inset_0_0_0_1px_rgba(0,0,0,0.15)]">
-        <span className="text-[11px] font-black tracking-[-0.08em]">LG</span>
-        <span className="absolute right-0 bottom-0 size-1.5 bg-black" />
-      </div>
-      <div className="leading-none">
-        <p className="text-[13px] font-semibold tracking-[0.16em] text-zinc-100">LOCALGROWTH</p>
-        <p className="mt-1 text-[10px] font-medium tracking-[0.24em] text-zinc-600">CONTROL OS</p>
-      </div>
+    <div className="flex items-center">
+      <Image
+        alt="Socium — Personal Social Manager"
+        className="h-10 w-auto"
+        height={356}
+        priority
+        src="/brand/socium-logo-horizontal-dark.svg"
+        width={1076}
+      />
     </div>
   );
 }
@@ -1655,7 +1656,7 @@ export function GrowthConsole() {
         <SheetContent className="w-[286px] border-zinc-800 bg-[#050505] p-0" side="left">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation</SheetTitle>
-            <SheetDescription>LocalGrowth workspace navigation</SheetDescription>
+            <SheetDescription>Socium workspace navigation</SheetDescription>
           </SheetHeader>
           <SidebarContent active={activeView} onNavigate={navigate} state={appState} />
         </SheetContent>
