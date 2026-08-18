@@ -4,6 +4,8 @@ All notable user-facing changes are documented here.
 
 ## Unreleased
 
+## 1.0.1 - 2026-08-18
+
 ### Changed
 
 - Rebranded the complete product and distribution surface as Socium, including the UI, `socium` npm/CLI package, `SOCIUM_*` configuration, native runtime assets, local application-data paths, documentation, and release automation.

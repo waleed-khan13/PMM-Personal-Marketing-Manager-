@@ -1,4 +1,4 @@
-export const CLI_VERSION = "1.0.0";
+export const CLI_VERSION = "1.0.1";
 export const MANIFEST_SCHEMA_VERSION = 1;
 export const INSTALLATION_SCHEMA_VERSION = 1;
 export const DEFAULT_MANIFEST_URL =

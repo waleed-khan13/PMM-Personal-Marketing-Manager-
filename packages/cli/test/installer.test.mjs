@@ -34,7 +34,7 @@ async function fixture() {
   if (process.platform !== "win32") await chmod(backend, 0o755);
   await writeFile(
     path.join(bundle, "bundle.json"),
-    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.0", target }),
+    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.1", target }),
   );
   const archive = path.join(root, "bundle.tar.gz");
   await tar.c({ cwd: bundle, file: archive, gzip: true }, ["bundle.json", "backend", "web"]);
@@ -44,7 +44,7 @@ async function fixture() {
     JSON.stringify({
       schemaVersion: 1,
       product: "socium",
-      version: "1.0.0",
+      version: "1.0.1",
       assets: { [target]: { url: path.basename(archive), sha256: await checksum(archive) } },
     }),
   );
@@ -70,7 +70,7 @@ test("supports conventional version commands", async () => {
   for (const argument of ["version", "--version", "-v"]) {
     const output = [];
     assert.equal(await main([argument], { log: (value) => output.push(value) }), 0);
-    assert.deepEqual(output, ["1.0.0"]);
+    assert.deepEqual(output, ["1.0.1"]);
   }
 });
 
@@ -78,7 +78,7 @@ test("rejects wrong-product and path-like release metadata", () => {
   const target = releaseTarget();
   const asset = { url: "bundle.tar.gz", sha256: "a".repeat(64) };
   assert.throws(
-    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.0", assets: { [target]: asset } }, target),
+    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.1", assets: { [target]: asset } }, target),
     /unexpected product/,
   );
   assert.throws(
@@ -101,7 +101,7 @@ test("installs a checksummed platform bundle and diagnoses the runtime", async (
     target: current.target,
     log: (message) => messages.push(message),
   });
-  assert.equal(installed.version, "1.0.0");
+  assert.equal(installed.version, "1.0.1");
   assert.equal((await loadInstallation(current.paths)).target, current.target);
   assert.match(await readFile(path.join(installed.runtimePath, "bundle.json"), "utf8"), /socium/);
   assert.ok(messages.some((message) => message.startsWith("Installed Socium")));

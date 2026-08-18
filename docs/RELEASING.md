@@ -4,16 +4,22 @@ Only a maintainer should run this procedure. A tag push publishes public GitHub 
 
 ## One-time npm setup
 
-The first release needs an npm account with two-factor authentication and a short-lived granular access token that has package read/write permission and bypasses 2FA for this non-interactive publication. Because `socium` does not exist before its first publication, the initial token may need access to all packages owned by the maintainer.
+Do not create or store a bypass-2FA npm token for Socium. Bootstrap the previously unpublished `socium` package interactively from a trusted maintainer computer after the matching GitHub Release assets exist:
 
-Save that token as the repository Actions secret `NPM_TOKEN` under **Settings → Secrets and variables → Actions**. Never add it to a local `.env`, git, workflow YAML, issue, or log. After the first package exists, configure npm trusted publishing for:
+```bash
+npm login
+cd packages/cli
+npm publish --access public --otp=<current-2FA-code>
+```
+
+Enter the current code only in your own terminal; never put it in chat, git, a local `.env`, workflow YAML, an issue, or a log. Then open the new package's settings on npmjs.com and configure trusted publishing for all later releases:
 
 - GitHub owner: `waleed-khan13`
 - Repository: `socium`
 - Workflow filename: `release.yml`
 - Allowed action: `npm publish`
 
-The workflow grants `id-token: write`, runs on a GitHub-hosted runner, and publishes with provenance. Once trusted publishing succeeds, remove the long-lived repository token and restrict token-based publishing in the npm package settings.
+The workflow uses Node.js 24 on a GitHub-hosted runner, grants `id-token: write`, and publishes with provenance without an npm token. After trusted publishing succeeds, restrict token-based publishing in the npm package settings.
 
 ## 1. Prepare the candidate
 
@@ -45,19 +51,21 @@ Do not continue until all six matrix jobs are green.
 Create one annotated tag after the candidate commit and version are final:
 
 ```bash
-git tag -a v1.0.0 -m "Socium 1.0.0"
-git push origin v1.0.0
+git tag -a v1.0.1 -m "Socium 1.0.1"
+git push origin v1.0.1
 ```
 
 The tag-triggered workflow repeats all native builds rather than trusting dry-run artifacts. It then creates the GitHub Release, uploads every archive and `.sha256` file plus `socium-manifest.json`, and publishes the CLI to npm. Never move or reuse a published version tag. If publication fails after npm accepts the version, fix the issue and release a new patch version.
+
+For the first-ever `socium` publication, the npm job is expected to remain unauthenticated until the interactive bootstrap above is completed. After the package is published and its trusted publisher is configured, re-run the failed workflow job; it will detect the existing version and finish without republishing it.
 
 ## 4. Verify the public release
 
 Check that the workflow is green and that the GitHub Release contains six archives, six checksum files, and one manifest. Then use a clean temporary application home on a supported machine:
 
 ```bash
-npx socium@1.0.0 onboard
-npx socium@1.0.0 doctor
+npx socium@1.0.1 onboard
+npx socium@1.0.1 doctor
 ```
 
-Confirm that the browser opens on loopback, `/api/health` reports version `1.0.0` and edition `social-v1`, and normal uninstall preserves the data directory. Announce the release only after this public-download verification passes.
+Confirm that the browser opens on loopback, `/api/health` reports version `1.0.1` and edition `social-v1`, and normal uninstall preserves the data directory. Announce the release only after this public-download verification passes.
