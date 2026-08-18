@@ -9,10 +9,10 @@ Do not create or store a bypass-2FA npm token for Socium. Bootstrap the previous
 ```bash
 npm login
 cd packages/cli
-npm publish --access public --otp=<current-2FA-code>
+npm publish --access public
 ```
 
-Enter the current code only in your own terminal; never put it in chat, git, a local `.env`, workflow YAML, an issue, or a log. Then open the new package's settings on npmjs.com and configure trusted publishing for all later releases:
+Enter the current second factor only when npm prompts for it, so it is not saved in shell history. Never put it in chat, git, a local `.env`, workflow YAML, an issue, or a log. Then open the new package's settings on npmjs.com and configure trusted publishing for all later releases:
 
 - GitHub owner: `waleed-khan13`
 - Repository: `socium`
