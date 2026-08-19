@@ -1,6 +1,6 @@
 {
   "name": "socium",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cross-platform installer and local runtime manager for Socium.",
   "license": "MIT",
   "repository": {
@@ -21,7 +21,7 @@
   ],
   "type": "module",
   "bin": {
-    "socium": "./bin/socium.mjs"
+    "socium": "bin/socium.mjs"
   },
   "files": [
     "bin",

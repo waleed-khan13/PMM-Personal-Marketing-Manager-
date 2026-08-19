@@ -4,6 +4,12 @@ All notable user-facing changes are documented here.
 
 ## Unreleased
 
+## 1.0.2 - 2026-08-19
+
+### Fixed
+
+- Increased the native release archive download window so slower connections can complete the checksummed localhost installation.
+
 ## 1.0.1 - 2026-08-18
 
 ### Changed

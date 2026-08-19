@@ -93,7 +93,7 @@ try {
   await access(path.join(dataDirectory, "socium.db"));
   await access(path.join(dataDirectory, "master.key"));
 
-  if (health.version !== "1.0.1" || state.features?.edition !== "social-v1") {
+  if (health.version !== "1.0.2" || state.features?.edition !== "social-v1") {
     throw new Error("Bundled API returned the wrong release identity.");
   }
   console.log(

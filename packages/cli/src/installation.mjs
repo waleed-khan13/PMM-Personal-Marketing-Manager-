@@ -13,6 +13,8 @@ import { assertSafeHttpUrl, readJsonSource, resolveAssetSource, validateManifest
 import { backendFileName, releaseTarget } from "./platform.mjs";
 import { isPathInside, sociumPaths } from "./paths.mjs";
 
+const RELEASE_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+
 async function pathExists(target) {
   try {
     await stat(target);
@@ -29,7 +31,7 @@ async function downloadHttp(source, destination) {
   const response = await fetch(source, {
     headers: { "user-agent": "socium-cli" },
     redirect: "follow",
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(RELEASE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok || !response.body) {
     throw new Error(`Could not download release bundle (${response.status}).`);
