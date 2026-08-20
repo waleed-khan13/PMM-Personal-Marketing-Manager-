@@ -4,6 +4,12 @@ All notable user-facing changes are documented here.
 
 ## Unreleased
 
+## 1.0.3 - 2026-08-20
+
+### Fixed
+
+- Changed release downloads from a total-duration limit to a progress-based idle timeout, allowing very slow but active connections to finish.
+
 ## 1.0.2 - 2026-08-19
 
 ### Fixed

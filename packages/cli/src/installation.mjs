@@ -4,7 +4,7 @@ import { chmod, cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 
 import * as tar from "tar";
 
@@ -13,7 +13,7 @@ import { assertSafeHttpUrl, readJsonSource, resolveAssetSource, validateManifest
 import { backendFileName, releaseTarget } from "./platform.mjs";
 import { isPathInside, sociumPaths } from "./paths.mjs";
 
-const RELEASE_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
+const RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS = 2 * 60_000;
 
 async function pathExists(target) {
   try {
@@ -24,25 +24,48 @@ async function pathExists(target) {
   }
 }
 
-async function downloadHttp(source, destination) {
+async function downloadHttp(source, destination, idleTimeoutMs = RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS) {
   if (source.startsWith("http://") && process.env.SOCIUM_ALLOW_INSECURE_DOWNLOADS !== "1") {
     throw new Error(`Refusing insecure release asset URL: ${source}`);
   }
-  const response = await fetch(source, {
-    headers: { "user-agent": "socium-cli" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(RELEASE_DOWNLOAD_TIMEOUT_MS),
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(`Could not download release bundle (${response.status}).`);
+  const controller = new AbortController();
+  let idleTimer;
+  const resetIdleTimer = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), idleTimeoutMs);
+    idleTimer.unref?.();
+  };
+  resetIdleTimer();
+  try {
+    const response = await fetch(source, {
+      headers: { "user-agent": "socium-cli" },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`Could not download release bundle (${response.status}).`);
+    }
+    assertSafeHttpUrl(response.url);
+    const progress = new Transform({
+      transform(chunk, _encoding, callback) {
+        resetIdleTimer();
+        callback(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(response.body), progress, createWriteStream(destination, { flags: "wx" }));
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Release bundle download stalled for more than ${Math.ceil(idleTimeoutMs / 1_000)} seconds.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(idleTimer);
   }
-  assertSafeHttpUrl(response.url);
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(destination, { flags: "wx" }));
 }
 
-async function acquireAsset(source, destination) {
+async function acquireAsset(source, destination, downloadIdleTimeoutMs) {
   if (source.startsWith("https://") || source.startsWith("http://")) {
-    await downloadHttp(source, destination);
+    await downloadHttp(source, destination, downloadIdleTimeoutMs);
     return;
   }
   const sourcePath = source.startsWith("file:") ? fileURLToPath(source) : path.resolve(source);
@@ -104,6 +127,7 @@ export async function installRelease({
   paths = sociumPaths(),
   target = releaseTarget(),
   force = false,
+  downloadIdleTimeoutMs = RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS,
   log = console.log,
 } = {}) {
   if (!manifestSource) throw new Error("A release manifest source is required.");
@@ -125,7 +149,7 @@ export async function installRelease({
 
   log(`Downloading Socium ${version} for ${target}...`);
   try {
-    await acquireAsset(assetSource, archivePath);
+    await acquireAsset(assetSource, archivePath, downloadIdleTimeoutMs);
     const actualChecksum = await sha256File(archivePath);
     if (actualChecksum.toLowerCase() !== asset.sha256.toLowerCase()) {
       throw new Error("Release bundle checksum verification failed. The archive was not installed.");

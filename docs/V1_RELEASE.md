@@ -40,7 +40,7 @@ A v1 release candidate is acceptable only when all of the following pass from a 
 1. The npm CLI downloads the correct platform bundle, rejects a bad checksum, installs into an empty application-data root, and preserves the separate data directory across updates.
 2. `pnpm check` passes type checking, linting, backend tests, browser workflows, accessibility checks, and the production build.
 3. The default navigation does not expose Labs modules.
-4. The API reports edition `social-v1`, Labs disabled, version `1.0.2`, loopback mode, and SQLite persistence.
+4. The API reports edition `social-v1`, Labs disabled, version `1.0.3`, loopback mode, and SQLite persistence.
 5. The real localhost browser workflow proves generation, edit invalidation, approval, immediate publishing, scheduling, media handling, and durable image generation against deterministic provider stand-ins.
 6. The installed native runtime boots its bundled FastAPI executable, applies SQLite migrations, serves the Next.js console through loopback, and passes `/api/health`; the optional Docker launcher preserves the same network boundary.
 
