@@ -33,7 +33,7 @@ export function formatDownloadProgress({ downloadedBytes, totalBytes, elapsedMs,
   }
 
   const ratio = status === "complete" ? 1 : Math.min(1, safeDownloaded / totalBytes);
-  const percentage = Math.round(ratio * 100);
+  const percentage = status === "complete" ? 100 : Math.floor(ratio * 100);
   const filled = Math.round(ratio * barWidth);
   const bar = `[${"#".repeat(filled)}${"-".repeat(barWidth - filled)}]`;
   const remainingBytes = Math.max(0, totalBytes - safeDownloaded);
@@ -50,6 +50,7 @@ export function createDownloadReporter({
   let lastRenderedAt = Number.NEGATIVE_INFINITY;
   let previousLineLength = 0;
   let ttyLineActive = false;
+  let lastRenderedPercentage;
   let lastLoggedPercentage = Number.NEGATIVE_INFINITY;
   let lastUnknownSizeLogAt = Number.NEGATIVE_INFINITY;
 
@@ -63,8 +64,16 @@ export function createDownloadReporter({
 
     const timestamp = now();
     const forced = progress.status === "start" || progress.status === "complete";
-    if (!forced && timestamp - lastRenderedAt < updateIntervalMs) return;
+    const hasKnownSize = Number.isFinite(progress.totalBytes) && progress.totalBytes > 0;
+    const percentage = hasKnownSize
+      ? progress.status === "complete"
+        ? 100
+        : Math.floor((progress.downloadedBytes / progress.totalBytes) * 100)
+      : undefined;
+    const percentageChanged = percentage !== undefined && percentage !== lastRenderedPercentage;
+    if (!forced && !percentageChanged && timestamp - lastRenderedAt < updateIntervalMs) return;
     lastRenderedAt = timestamp;
+    lastRenderedPercentage = percentage;
     const line = formatDownloadProgress(progress);
 
     if (stream?.isTTY && typeof stream.write === "function") {
@@ -80,9 +89,8 @@ export function createDownloadReporter({
       return;
     }
 
-    if (Number.isFinite(progress.totalBytes) && progress.totalBytes > 0) {
-      const percentage = progress.status === "complete" ? 100 : Math.round((progress.downloadedBytes / progress.totalBytes) * 100);
-      if (forced || percentage >= lastLoggedPercentage + 10) {
+    if (hasKnownSize) {
+      if (percentage !== lastLoggedPercentage) {
         log(line);
         lastLoggedPercentage = percentage;
       }

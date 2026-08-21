@@ -37,7 +37,7 @@ async function fixture() {
   if (process.platform !== "win32") await chmod(backend, 0o755);
   await writeFile(
     path.join(bundle, "bundle.json"),
-    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.4", target }),
+    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.5", target }),
   );
   const archive = path.join(root, "bundle.tar.gz");
   await tar.c({ cwd: bundle, file: archive, gzip: true }, ["bundle.json", "backend", "web"]);
@@ -47,7 +47,7 @@ async function fixture() {
     JSON.stringify({
       schemaVersion: 1,
       product: "socium",
-      version: "1.0.4",
+      version: "1.0.5",
       assets: { [target]: { url: path.basename(archive), sha256: await checksum(archive) } },
     }),
   );
@@ -73,7 +73,7 @@ test("supports conventional version commands", async () => {
   for (const argument of ["version", "--version", "-v"]) {
     const output = [];
     assert.equal(await main([argument], { log: (value) => output.push(value) }), 0);
-    assert.deepEqual(output, ["1.0.4"]);
+    assert.deepEqual(output, ["1.0.5"]);
   }
 });
 
@@ -93,17 +93,21 @@ test("formats and renders terminal download progress", () => {
   const reporter = createDownloadReporter({
     stream: { isTTY: true, write: (value) => writes.push(value) },
     now: () => 1000,
-    updateIntervalMs: 0,
+    updateIntervalMs: 250,
   });
   reporter({ downloadedBytes: 0, totalBytes: 100, elapsedMs: 0, status: "start" });
+  reporter({ downloadedBytes: 1, totalBytes: 100, elapsedMs: 1000, status: "progress" });
+  reporter({ downloadedBytes: 2, totalBytes: 100, elapsedMs: 1000, status: "progress" });
   reporter({ downloadedBytes: 50, totalBytes: 100, elapsedMs: 1000, status: "progress" });
   reporter({ downloadedBytes: 100, totalBytes: 100, elapsedMs: 2000, status: "complete" });
+  assert.match(writes.join(""), /1%/);
+  assert.match(writes.join(""), /2%/);
   assert.match(writes.join(""), /50%/);
   assert.match(writes.join(""), /100%/);
   assert.equal(writes.at(-1), "\n");
 });
 
-test("logs download milestones when output is not interactive", () => {
+test("logs every download percentage when output is not interactive", () => {
   const messages = [];
   const reporter = createDownloadReporter({
     stream: { isTTY: false },
@@ -111,7 +115,7 @@ test("logs download milestones when output is not interactive", () => {
     now: () => 1000,
     updateIntervalMs: 0,
   });
-  for (const percentage of [0, 5, 10, 15, 20, 100]) {
+  for (const percentage of [0, 1, 2, 3, 100]) {
     reporter({
       downloadedBytes: percentage,
       totalBytes: 100,
@@ -119,18 +123,19 @@ test("logs download milestones when output is not interactive", () => {
       status: percentage === 0 ? "start" : percentage === 100 ? "complete" : "progress",
     });
   }
-  assert.equal(messages.length, 4);
+  assert.equal(messages.length, 5);
   assert.match(messages[0], /0%/);
-  assert.match(messages[1], /10%/);
-  assert.match(messages[2], /20%/);
-  assert.match(messages[3], /100%/);
+  assert.match(messages[1], /1%/);
+  assert.match(messages[2], /2%/);
+  assert.match(messages[3], /3%/);
+  assert.match(messages[4], /100%/);
 });
 
 test("rejects wrong-product and path-like release metadata", () => {
   const target = releaseTarget();
   const asset = { url: "bundle.tar.gz", sha256: "a".repeat(64) };
   assert.throws(
-    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.4", assets: { [target]: asset } }, target),
+    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.5", assets: { [target]: asset } }, target),
     /unexpected product/,
   );
   assert.throws(
@@ -153,7 +158,7 @@ test("installs a checksummed platform bundle and diagnoses the runtime", async (
     target: current.target,
     log: (message) => messages.push(message),
   });
-  assert.equal(installed.version, "1.0.4");
+  assert.equal(installed.version, "1.0.5");
   assert.equal((await loadInstallation(current.paths)).target, current.target);
   assert.match(await readFile(path.join(installed.runtimePath, "bundle.json"), "utf8"), /socium/);
   assert.ok(messages.some((message) => message.startsWith("Installed Socium")));

@@ -1,6 +1,6 @@
 {
   "name": "socium-app",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "Open-source, localhost-only AI social publishing with human approval.",
   "license": "MIT",

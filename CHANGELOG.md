@@ -4,6 +4,12 @@ All notable user-facing changes are documented here.
 
 ## Unreleased
 
+## 1.0.5 - 2026-08-22
+
+### Changed
+
+- Changed release-download reporting to update at every completed percentage point in both interactive terminals and redirected output.
+
 ## 1.0.4 - 2026-08-21
 
 ### Added
