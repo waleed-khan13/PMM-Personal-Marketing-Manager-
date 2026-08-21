@@ -5,6 +5,7 @@ import {
   DEFAULT_WEB_PORT,
 } from "./constants.mjs";
 import { diagnose } from "./doctor.mjs";
+import { createDownloadReporter } from "./download-progress.mjs";
 import { installRelease } from "./installation.mjs";
 import { sociumPaths } from "./paths.mjs";
 import { startRuntime } from "./runtime.mjs";
@@ -63,7 +64,7 @@ function printDoctor(result, log) {
   log(result.ok ? "Doctor completed successfully." : "Doctor found blocking problems.");
 }
 
-export async function main(argv, { log = console.log, error = console.error } = {}) {
+export async function main(argv, { log = console.log, error = console.error, output = process.stdout } = {}) {
   try {
     const arguments_ = parseArguments(argv);
     const paths = sociumPaths();
@@ -98,6 +99,7 @@ export async function main(argv, { log = console.log, error = console.error } = 
         manifestSource: manifestSource(arguments_),
         paths,
         force: arguments_.flags.has("--force"),
+        onDownloadProgress: createDownloadReporter({ stream: output, log }),
         log,
       });
       return 0;
@@ -107,6 +109,7 @@ export async function main(argv, { log = console.log, error = console.error } = 
         manifestSource: manifestSource(arguments_),
         paths,
         force: arguments_.flags.has("--force"),
+        onDownloadProgress: createDownloadReporter({ stream: output, log }),
         log,
       });
       if (arguments_.flags.has("--install-only")) return 0;

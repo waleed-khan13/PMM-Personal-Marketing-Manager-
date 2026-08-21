@@ -24,11 +24,18 @@ async function pathExists(target) {
   }
 }
 
-async function downloadHttp(source, destination, idleTimeoutMs = RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS) {
+async function downloadHttp(source, destination, {
+  idleTimeoutMs = RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS,
+  onProgress,
+} = {}) {
   if (source.startsWith("http://") && process.env.SOCIUM_ALLOW_INSECURE_DOWNLOADS !== "1") {
     throw new Error(`Refusing insecure release asset URL: ${source}`);
   }
   const controller = new AbortController();
+  const startedAt = Date.now();
+  let downloadedBytes = 0;
+  let totalBytes;
+  let progressStarted = false;
   let idleTimer;
   const resetIdleTimer = () => {
     clearTimeout(idleTimer);
@@ -46,14 +53,24 @@ async function downloadHttp(source, destination, idleTimeoutMs = RELEASE_DOWNLOA
       throw new Error(`Could not download release bundle (${response.status}).`);
     }
     assertSafeHttpUrl(response.url);
+    const declaredLength = Number.parseInt(response.headers.get("content-length") || "", 10);
+    totalBytes = Number.isSafeInteger(declaredLength) && declaredLength > 0 ? declaredLength : undefined;
+    onProgress?.({ downloadedBytes, totalBytes, elapsedMs: Date.now() - startedAt, status: "start" });
+    progressStarted = true;
     const progress = new Transform({
       transform(chunk, _encoding, callback) {
         resetIdleTimer();
+        downloadedBytes += chunk.byteLength;
+        onProgress?.({ downloadedBytes, totalBytes, elapsedMs: Date.now() - startedAt, status: "progress" });
         callback(null, chunk);
       },
     });
     await pipeline(Readable.fromWeb(response.body), progress, createWriteStream(destination, { flags: "wx" }));
+    onProgress?.({ downloadedBytes, totalBytes, elapsedMs: Date.now() - startedAt, status: "complete" });
   } catch (error) {
+    if (progressStarted) {
+      onProgress?.({ downloadedBytes, totalBytes, elapsedMs: Date.now() - startedAt, status: "error" });
+    }
     if (controller.signal.aborted) {
       throw new Error(`Release bundle download stalled for more than ${Math.ceil(idleTimeoutMs / 1_000)} seconds.`);
     }
@@ -63,9 +80,9 @@ async function downloadHttp(source, destination, idleTimeoutMs = RELEASE_DOWNLOA
   }
 }
 
-async function acquireAsset(source, destination, downloadIdleTimeoutMs) {
+async function acquireAsset(source, destination, downloadIdleTimeoutMs, onDownloadProgress) {
   if (source.startsWith("https://") || source.startsWith("http://")) {
-    await downloadHttp(source, destination, downloadIdleTimeoutMs);
+    await downloadHttp(source, destination, { idleTimeoutMs: downloadIdleTimeoutMs, onProgress: onDownloadProgress });
     return;
   }
   const sourcePath = source.startsWith("file:") ? fileURLToPath(source) : path.resolve(source);
@@ -128,6 +145,7 @@ export async function installRelease({
   target = releaseTarget(),
   force = false,
   downloadIdleTimeoutMs = RELEASE_DOWNLOAD_IDLE_TIMEOUT_MS,
+  onDownloadProgress,
   log = console.log,
 } = {}) {
   if (!manifestSource) throw new Error("A release manifest source is required.");
@@ -149,7 +167,7 @@ export async function installRelease({
 
   log(`Downloading Socium ${version} for ${target}...`);
   try {
-    await acquireAsset(assetSource, archivePath, downloadIdleTimeoutMs);
+    await acquireAsset(assetSource, archivePath, downloadIdleTimeoutMs, onDownloadProgress);
     const actualChecksum = await sha256File(archivePath);
     if (actualChecksum.toLowerCase() !== asset.sha256.toLowerCase()) {
       throw new Error("Release bundle checksum verification failed. The archive was not installed.");

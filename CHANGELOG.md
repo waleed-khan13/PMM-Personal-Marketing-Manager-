@@ -4,6 +4,13 @@ All notable user-facing changes are documented here.
 
 ## Unreleased
 
+## 1.0.4 - 2026-08-21
+
+### Added
+
+- Added live release-download progress with percentage, downloaded and total size, transfer speed, and estimated time remaining in interactive terminals.
+- Added throttled percentage milestones for redirected or non-interactive installer output.
+
 ## 1.0.3 - 2026-08-20
 
 ### Fixed

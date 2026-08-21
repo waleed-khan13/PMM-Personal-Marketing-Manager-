@@ -11,6 +11,7 @@ import test from "node:test";
 import * as tar from "tar";
 
 import { main } from "../src/cli.mjs";
+import { createDownloadReporter, formatDownloadProgress } from "../src/download-progress.mjs";
 import { diagnose } from "../src/doctor.mjs";
 import { installRelease, loadInstallation } from "../src/installation.mjs";
 import { resolveAssetSource, validateManifest } from "../src/manifest.mjs";
@@ -36,7 +37,7 @@ async function fixture() {
   if (process.platform !== "win32") await chmod(backend, 0o755);
   await writeFile(
     path.join(bundle, "bundle.json"),
-    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.3", target }),
+    JSON.stringify({ schemaVersion: 1, product: "socium", version: "1.0.4", target }),
   );
   const archive = path.join(root, "bundle.tar.gz");
   await tar.c({ cwd: bundle, file: archive, gzip: true }, ["bundle.json", "backend", "web"]);
@@ -46,7 +47,7 @@ async function fixture() {
     JSON.stringify({
       schemaVersion: 1,
       product: "socium",
-      version: "1.0.3",
+      version: "1.0.4",
       assets: { [target]: { url: path.basename(archive), sha256: await checksum(archive) } },
     }),
   );
@@ -72,15 +73,64 @@ test("supports conventional version commands", async () => {
   for (const argument of ["version", "--version", "-v"]) {
     const output = [];
     assert.equal(await main([argument], { log: (value) => output.push(value) }), 0);
-    assert.deepEqual(output, ["1.0.3"]);
+    assert.deepEqual(output, ["1.0.4"]);
   }
+});
+
+test("formats and renders terminal download progress", () => {
+  const line = formatDownloadProgress({
+    downloadedBytes: 1024 * 1024,
+    totalBytes: 2 * 1024 * 1024,
+    elapsedMs: 1000,
+    status: "progress",
+  });
+  assert.match(line, /50%/);
+  assert.match(line, /1\.0 \/ 2\.0 MB/);
+  assert.match(line, /1\.0 MB\/s/);
+  assert.match(line, /ETA 00:01/);
+
+  const writes = [];
+  const reporter = createDownloadReporter({
+    stream: { isTTY: true, write: (value) => writes.push(value) },
+    now: () => 1000,
+    updateIntervalMs: 0,
+  });
+  reporter({ downloadedBytes: 0, totalBytes: 100, elapsedMs: 0, status: "start" });
+  reporter({ downloadedBytes: 50, totalBytes: 100, elapsedMs: 1000, status: "progress" });
+  reporter({ downloadedBytes: 100, totalBytes: 100, elapsedMs: 2000, status: "complete" });
+  assert.match(writes.join(""), /50%/);
+  assert.match(writes.join(""), /100%/);
+  assert.equal(writes.at(-1), "\n");
+});
+
+test("logs download milestones when output is not interactive", () => {
+  const messages = [];
+  const reporter = createDownloadReporter({
+    stream: { isTTY: false },
+    log: (value) => messages.push(value),
+    now: () => 1000,
+    updateIntervalMs: 0,
+  });
+  for (const percentage of [0, 5, 10, 15, 20, 100]) {
+    reporter({
+      downloadedBytes: percentage,
+      totalBytes: 100,
+      elapsedMs: percentage * 100,
+      status: percentage === 0 ? "start" : percentage === 100 ? "complete" : "progress",
+    });
+  }
+  assert.equal(messages.length, 4);
+  assert.match(messages[0], /0%/);
+  assert.match(messages[1], /10%/);
+  assert.match(messages[2], /20%/);
+  assert.match(messages[3], /100%/);
 });
 
 test("rejects wrong-product and path-like release metadata", () => {
   const target = releaseTarget();
   const asset = { url: "bundle.tar.gz", sha256: "a".repeat(64) };
   assert.throws(
-    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.3", assets: { [target]: asset } }, target),
+    () => validateManifest({ schemaVersion: 1, product: "another-product", version: "1.0.4", assets: { [target]: asset } }, target),
     /unexpected product/,
   );
   assert.throws(
@@ -103,7 +153,7 @@ test("installs a checksummed platform bundle and diagnoses the runtime", async (
     target: current.target,
     log: (message) => messages.push(message),
   });
-  assert.equal(installed.version, "1.0.3");
+  assert.equal(installed.version, "1.0.4");
   assert.equal((await loadInstallation(current.paths)).target, current.target);
   assert.match(await readFile(path.join(installed.runtimePath, "bundle.json"), "utf8"), /socium/);
   assert.ok(messages.some((message) => message.startsWith("Installed Socium")));
@@ -161,14 +211,22 @@ test("keeps slow downloads alive while bytes continue to arrive", async (context
   manifest.assets[current.target].url = `http://127.0.0.1:${address.port}/bundle.tar.gz`;
   await writeFile(current.manifest, JSON.stringify(manifest));
 
+  const progressEvents = [];
+
   const installed = await installRelease({
     manifestSource: current.manifest,
     paths: current.paths,
     target: current.target,
     downloadIdleTimeoutMs: 250,
+    onDownloadProgress: (progress) => progressEvents.push(progress),
     log() {},
   });
   assert.equal(installed.target, current.target);
+  assert.equal(progressEvents[0].status, "start");
+  assert.equal(progressEvents[0].totalBytes, archive.length);
+  assert.ok(progressEvents.some((progress) => progress.status === "progress" && progress.downloadedBytes > 0));
+  assert.equal(progressEvents.at(-1).status, "complete");
+  assert.equal(progressEvents.at(-1).downloadedBytes, archive.length);
 });
 
 test("uninstall preserves data unless purge is explicit", async (context) => {
