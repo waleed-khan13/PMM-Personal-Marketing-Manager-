@@ -131,8 +131,8 @@ export function SetupGuide({
     {
       action: "Connect an AI provider",
       complete: state.provider.configured,
-      description: "Use local Ollama or a hosted OpenAI-compatible endpoint with your own model and credentials.",
-      detail: "For Ollama, start the local server and choose an installed model. For hosted APIs, enter the HTTPS base URL, model name, and API key, then run Save & test.",
+      description: "Choose local Ollama, OpenAI, Gemini, Claude, OpenRouter, or NVIDIA and connect it with one form.",
+      detail: "Hosted presets only need their own API key. Socium supplies the endpoint and a working default model. Ollama models are detected locally. No Socium account is required.",
       icon: Bot,
       label: "Connect the content engine",
       onAction: onOpenConnections,

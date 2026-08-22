@@ -10,6 +10,24 @@ import httpx
 from app.errors import ExternalServiceError
 from app.schemas import GeneratedContent, GeneratedOutreach, ProviderConnectionResult
 
+HOSTED_PROVIDER_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "anthropic": "https://api.anthropic.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "nvidia": "https://integrate.api.nvidia.com/v1",
+}
+
+PROVIDER_NAMES = {
+    "ollama": "Ollama",
+    "openai": "OpenAI",
+    "gemini": "Google Gemini",
+    "anthropic": "Anthropic",
+    "openrouter": "OpenRouter",
+    "nvidia": "NVIDIA NIM",
+    "openai-compatible": "Provider",
+}
+
 
 def validate_base_url(value: str) -> str:
     parsed = urlsplit(value.strip())
@@ -20,9 +38,39 @@ def validate_base_url(value: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
+def validate_provider_base_url(kind: str, value: str) -> str:
+    normalized = validate_base_url(value)
+    expected = HOSTED_PROVIDER_URLS.get(kind)
+    if expected and normalized != expected:
+        raise ExternalServiceError(
+            f"{PROVIDER_NAMES[kind]} uses a fixed official API endpoint. Select the custom adapter "
+            "to use another URL."
+        )
+    return normalized
+
+
 def _openai_endpoint(base_url: str, resource: str) -> str:
     normalized = validate_base_url(base_url)
     return f"{normalized}/{resource}" if normalized.endswith("/v1") else f"{normalized}/v1/{resource}"
+
+
+def _provider_endpoint(settings: dict[str, str], resource: str) -> str:
+    if settings["kind"] == "openai-compatible":
+        return _openai_endpoint(settings["base_url"], resource)
+    return f"{validate_provider_base_url(settings['kind'], settings['base_url'])}/{resource}"
+
+
+def _provider_headers(settings: dict[str, str]) -> dict[str, str]:
+    api_key = settings["api_key"]
+    if settings["kind"] == "anthropic":
+        return {
+            **({"x-api-key": api_key} if api_key else {}),
+            "anthropic-version": "2023-06-01",
+        }
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    if settings["kind"] == "openrouter":
+        headers["X-Title"] = "Socium"
+    return headers
 
 
 async def _request_json(
@@ -74,15 +122,19 @@ async def test_provider(settings: dict[str, str]) -> ProviderConnectionResult:
                 else "Ollama connected. Pull a model to generate content."
             )
         else:
-            headers = {"Authorization": f"Bearer {settings['api_key']}"} if settings["api_key"] else {}
-            payload = await _request_json(_openai_endpoint(settings["base_url"], "models"), headers=headers)
+            payload = await _request_json(
+                _provider_endpoint(settings, "models"),
+                headers=_provider_headers(settings),
+            )
             raw_models = payload.get("data") if isinstance(payload.get("data"), list) else []
             models = [
                 str(item.get("id")) for item in raw_models if isinstance(item, dict) and item.get("id")
             ][:50]
-            message = (
-                f"Provider connected{' with ' + str(len(models)) + ' visible model(s)' if models else ''}."
-            )
+            provider_name = PROVIDER_NAMES.get(settings["kind"], "Provider")
+            message = f"{provider_name} connected"
+            if models:
+                message += f" with {len(models)} visible model(s)"
+            message += "."
         return ProviderConnectionResult(
             ok=True,
             message=message,
@@ -203,21 +255,42 @@ async def _generate_json_text(
         message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
         return str(message.get("content") or "")
 
-    headers = {"Content-Type": "application/json"}
-    if settings["api_key"]:
-        headers["Authorization"] = f"Bearer {settings['api_key']}"
+    if settings["kind"] == "anthropic":
+        payload = await _request_json(
+            _provider_endpoint(settings, "messages"),
+            method="POST",
+            headers={"Content-Type": "application/json", **_provider_headers(settings)},
+            json_body={
+                "model": settings["model"],
+                "max_tokens": 4_096,
+                "temperature": temperature,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=120,
+        )
+        blocks = payload.get("content") if isinstance(payload.get("content"), list) else []
+        return "\n".join(
+            str(block.get("text") or "")
+            for block in blocks
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+
+    headers = {"Content-Type": "application/json", **_provider_headers(settings)}
+    request_body: dict[str, Any] = {
+        "model": settings["model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    if settings["kind"] != "openai":
+        request_body["temperature"] = temperature
     payload = await _request_json(
-        _openai_endpoint(settings["base_url"], "chat/completions"),
+        _provider_endpoint(settings, "chat/completions"),
         method="POST",
         headers=headers,
-        json_body={
-            "model": settings["model"],
-            "temperature": temperature,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-        },
+        json_body=request_body,
         timeout=120,
     )
     choices = payload.get("choices") if isinstance(payload.get("choices"), list) else []

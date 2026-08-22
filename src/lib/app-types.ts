@@ -1,4 +1,11 @@
-export type ProviderKind = "ollama" | "openai-compatible";
+export type ProviderKind =
+  | "ollama"
+  | "openai"
+  | "gemini"
+  | "anthropic"
+  | "openrouter"
+  | "nvidia"
+  | "openai-compatible";
 export type ImageProviderKind = "openai-images" | "automatic1111" | "comfyui";
 export type ContentChannel = "linkedin" | "linkedin-company" | "instagram" | "facebook" | "x" | "telegram" | "blog";
 export type PostStatus = "pending" | "approved" | "rejected" | "publishing" | "published" | "failed";

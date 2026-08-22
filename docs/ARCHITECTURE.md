@@ -17,7 +17,7 @@ All application services bind to loopback in a native install. Docker Compose ex
 | Durable work | SQLite-backed job table + local worker | Restart-safe schedules and retries without requiring Redis or another service. |
 | Browser audit | Lightweight HTTP crawler + Playwright fallback | Fast static crawling while retaining rendered-page checks when required. |
 | Local AI | Ollama/LM Studio/LocalAI adapters | Private user-controlled inference. |
-| Cloud AI | Generic OpenAI-compatible adapter | Vendor-neutral access using user-owned credentials. |
+| Cloud AI | OpenAI, Gemini, Anthropic, OpenRouter, NVIDIA, and generic compatible adapters | Ready-made official endpoints with user-owned credentials plus an explicit advanced custom option. |
 | Image AI | OpenAI-compatible Images API + Automatic1111/Forge + ComfyUI | User-selected hosted or fully local workflow generation with one durable review boundary. |
 | Packaging | Native launcher plus optional Docker Compose | A normal localhost install first, with a reproducible container option. |
 
@@ -111,6 +111,8 @@ Adapters publish an ID, version, capability list, config schema, secret fields, 
 The connector registry is the public catalog and validation boundary. Account rows contain non-secret configuration and one encrypted JSON secret envelope. Public state projects only per-field presence flags; decrypted runtime data stays inside connector services and is never serialized into an API response.
 
 ### AI provider
+
+The text-provider setting stores a provider kind, endpoint, model ID, and encrypted key. Hosted presets pin their official API root so a credential cannot be redirected to a different host through the normal settings API. OpenAI, Gemini, OpenRouter, and NVIDIA use their OpenAI-compatible chat contracts; Anthropic uses its native Messages contract and required version header. Ollama and the custom adapter retain editable local/base URLs. Public state contains only a key-presence flag.
 
 ```python
 class ModelProvider(Protocol):

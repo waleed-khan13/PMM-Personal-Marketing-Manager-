@@ -10,7 +10,7 @@ See [docs/V1_RELEASE.md](docs/V1_RELEASE.md) for the release contract and [docs/
 
 ## What works today
 
-- Connect and test Ollama or a generic OpenAI-compatible API.
+- Select a ready-made Ollama, OpenAI, Google Gemini, Anthropic Claude, OpenRouter, or NVIDIA NIM connection; a custom OpenAI-compatible adapter remains available for advanced users.
 - Save a business profile and generate channel-aware content with the selected model.
 - Persist settings, drafts, revisions, and audit events in a local SQLite WAL database.
 - Encrypt AI, Telegram, and multi-secret connector credentials with an automatically generated local master key.
@@ -84,11 +84,13 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000). `pnpm dev` starts both the 
 Complete the checklist in the dashboard:
 
 1. Add the business profile.
-2. Connect Ollama or an OpenAI-compatible provider and test it.
+2. Open **Integrations → AI provider**, choose a service, paste that service's API key, and select **Connect provider**. Ollama needs no key and detects installed local models automatically.
 3. Optionally connect a Telegram bot and chat.
 4. Start the local Telegram approval listener.
 5. Generate and review a Telegram draft, then approve it.
 6. Publish immediately or schedule the exact approved revision from the local queue.
+
+Socium fills the official endpoint and a working default model for OpenAI, Gemini, Claude, OpenRouter, and NVIDIA. Open **Advanced settings** only to change the model, change Ollama's local port, or configure LM Studio, LocalAI, and other custom OpenAI-compatible servers. Hosted preset keys are never sent to a user-entered URL, are encrypted before SQLite storage, and remain on this computer. Socium has no hosted login or cloud account requirement.
 
 Slack can also be configured under Integrations. Socium stores its `xoxb-` and `xapp-` tokens encrypted, exposes only presence flags to the browser, and starts the outbound Socket Mode listener after the connection is verified. Approval buttons carry the post ID and exact revision, so edited, repeated, unauthorized-channel, or stale decisions are rejected.
 

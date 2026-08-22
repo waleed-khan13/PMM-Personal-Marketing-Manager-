@@ -123,6 +123,7 @@ import type {
   PublicAppState,
 } from "@/lib/app-types";
 import { requestJson } from "@/lib/api";
+import { getProviderPreset, PROVIDER_PRESETS } from "@/lib/provider-presets";
 import { cn } from "@/lib/utils";
 import {
   WordPressConnectorCard,
@@ -595,6 +596,20 @@ export function GrowthConsole() {
     model: string;
     apiKey: string;
   }>({ kind: "ollama", baseUrl: "http://127.0.0.1:11434", model: "", apiKey: "" });
+  const selectedProvider = getProviderPreset(providerForm.kind);
+  const providerHasStoredKey = Boolean(
+    appState?.provider.hasApiKey
+      && appState.provider.kind === providerForm.kind
+      && appState.provider.baseUrl === providerForm.baseUrl.replace(/\/$/, ""),
+  );
+  const providerNeedsKey = selectedProvider.apiKeyRequired
+    && !providerHasStoredKey
+    && !providerForm.apiKey.trim();
+  const providerCanConnect = Boolean(
+    providerForm.baseUrl.trim()
+      && !providerNeedsKey
+      && (providerForm.kind !== "openai-compatible" || providerForm.model.trim()),
+  );
   const [telegramForm, setTelegramForm] = useState({ botToken: "", chatId: "" });
   const [slackForm, setSlackForm] = useState({
     name: "Slack approvals",
@@ -894,35 +909,33 @@ export function GrowthConsole() {
     }
   }
 
-  async function saveProvider(event?: FormEvent) {
+  async function testProviderConnection(event?: FormEvent) {
     event?.preventDefault();
-    setBusy("provider-save");
+    setBusy("provider-test");
+    setProviderVerified(false);
     try {
-      const response = await requestJson<StateResponse>("/api/settings/provider", {
+      const saved = await requestJson<StateResponse>("/api/settings/provider", {
         method: "PUT",
         body: JSON.stringify(providerForm),
       });
-      setAppState(response.state);
+      setAppState(saved.state);
       setProviderForm((current) => ({ ...current, apiKey: "" }));
-      setProviderVerified(false);
-      toast.success("AI provider settings saved");
-      return true;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save the provider.");
-      return false;
-    } finally {
-      setBusy(null);
-    }
-  }
 
-  async function testProviderConnection() {
-    const saved = await saveProvider();
-    if (!saved) return;
-    setBusy("provider-test");
-    try {
       const result = await requestJson<ProviderConnectionResult>("/api/providers/test", { method: "POST" });
-      setProviderVerified(true);
-      setProviderModels(result.models ?? []);
+      const models = result.models ?? [];
+      setProviderModels(models);
+
+      if (providerForm.kind === "ollama" && !providerForm.model && models[0]) {
+        const detectedModel = models[0];
+        const selected = await requestJson<StateResponse>("/api/settings/provider", {
+          method: "PUT",
+          body: JSON.stringify({ ...providerForm, apiKey: "", model: detectedModel }),
+        });
+        setAppState(selected.state);
+        setProviderForm((current) => ({ ...current, apiKey: "", model: detectedModel }));
+      }
+
+      setProviderVerified(Boolean(providerForm.model || models[0]));
       toast.success(result.message, { description: result.latencyMs ? `${result.latencyMs} ms` : undefined });
     } catch (error) {
       setProviderVerified(false);
@@ -2224,34 +2237,101 @@ export function GrowthConsole() {
                   <CardHeader className="border-b border-zinc-900">
                     <div className="flex items-center gap-3">
                       <IntegrationIcon><Bot className="size-4" /></IntegrationIcon>
-                      <div><CardTitle>AI provider</CardTitle><CardDescription>Local Ollama or hosted OpenAI-compatible API.</CardDescription></div>
+                      <div><CardTitle>AI provider</CardTitle><CardDescription>Choose a service, add its key, and connect.</CardDescription></div>
                     </div>
                     <CardAction><ConnectionStatus configured={appState.provider.configured} verified={providerVerified} /></CardAction>
                   </CardHeader>
                   <CardContent>
-                    <form className="space-y-4" onSubmit={(event) => void saveProvider(event)}>
-                      <Field htmlFor="provider-kind" label="Adapter">
+                    <form className="space-y-4" onSubmit={(event) => void testProviderConnection(event)}>
+                      <Field htmlFor="provider-kind" label="AI service">
                         <Select
                           onValueChange={(value) => {
                             if (!value) return;
-                            setProviderForm((current) => ({
-                              ...current,
-                              kind: value as ProviderKind,
-                              baseUrl: value === "ollama" && current.baseUrl.includes("/v1") ? "http://127.0.0.1:11434" : current.baseUrl,
-                            }));
+                            const preset = getProviderPreset(value as ProviderKind);
+                            setProviderForm({
+                              kind: preset.kind,
+                              baseUrl: preset.baseUrl,
+                              model: preset.defaultModel,
+                              apiKey: "",
+                            });
+                            setProviderModels([]);
+                            setProviderVerified(false);
                           }}
                           value={providerForm.kind}
                         >
                           <SelectTrigger className="h-10 w-full rounded-md border-input bg-[#080808]" id="provider-kind"><SelectValue /></SelectTrigger>
-                          <SelectContent className="border border-zinc-700 bg-[#0c0c0c]"><SelectItem value="ollama">Ollama (local)</SelectItem><SelectItem value="openai-compatible">OpenAI-compatible</SelectItem></SelectContent>
+                          <SelectContent className="border border-zinc-700 bg-[#0c0c0c]">
+                            {PROVIDER_PRESETS.map((preset) => <SelectItem key={preset.kind} value={preset.kind}>{preset.label}</SelectItem>)}
+                          </SelectContent>
                         </Select>
                       </Field>
-                      <Field htmlFor="provider-url" label="Base URL" hint={providerForm.kind === "ollama" ? "Usually :11434" : "API root or /v1"}><Input id="provider-url" onChange={(event) => setProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder={providerForm.kind === "ollama" ? "http://127.0.0.1:11434" : "https://api.example.com/v1"} required type="url" value={providerForm.baseUrl} /></Field>
-                      <Field htmlFor="provider-model" label="Model" hint="Exact provider model ID"><Input id="provider-model" list="provider-models" maxLength={180} onChange={(event) => setProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={providerForm.kind === "ollama" ? "llama3.2:3b" : "model-name"} required value={providerForm.model} /><datalist id="provider-models">{providerModels.map((model) => <option key={model} value={model} />)}</datalist></Field>
-                      <Field htmlFor="provider-key" label="API key" hint={appState.provider.hasApiKey ? "Stored — blank keeps current key" : providerForm.kind === "ollama" ? "Optional" : "Required by most providers"}><Input autoComplete="off" id="provider-key" onChange={(event) => setProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={appState.provider.hasApiKey ? "••••••••••••" : "sk-…"} type="password" value={providerForm.apiKey} /></Field>
-                      <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-900 pt-4">
-                        <Button disabled={busy === "provider-save"} type="submit" variant="outline">{busy === "provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
-                        <Button disabled={busy === "provider-test" || busy === "provider-save"} onClick={() => void testProviderConnection()} type="button">{busy === "provider-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
+
+                      <div className="rounded-md border border-zinc-800 bg-black p-3">
+                        <p className="text-xs font-medium text-zinc-200">{selectedProvider.label}</p>
+                        <p className="mt-1 text-[11px] leading-5 text-zinc-600">{selectedProvider.description}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-zinc-600">
+                          <Badge className="border-zinc-800 text-zinc-500" variant="outline">
+                            {providerForm.model || "Model auto-detect"}
+                          </Badge>
+                          <span>No Socium account required</span>
+                        </div>
+                      </div>
+
+                      {providerForm.kind !== "ollama" ? (
+                        <Field
+                          htmlFor="provider-key"
+                          label="API key"
+                          hint={providerHasStoredKey ? "Stored securely — leave blank to keep it" : selectedProvider.apiKeyRequired ? "Required" : "Optional"}
+                        >
+                          <Input
+                            autoComplete="off"
+                            id="provider-key"
+                            onChange={(event) => setProviderForm((current) => ({ ...current, apiKey: event.target.value }))}
+                            placeholder={providerHasStoredKey ? "••••••••••••" : selectedProvider.keyPlaceholder}
+                            required={selectedProvider.apiKeyRequired && !providerHasStoredKey}
+                            type="password"
+                            value={providerForm.apiKey}
+                          />
+                        </Field>
+                      ) : null}
+
+                      <details className="rounded-md border border-zinc-900 bg-black px-3 py-2.5" key={providerForm.kind} open={providerForm.kind === "openai-compatible" ? true : undefined}>
+                        <summary className="cursor-pointer text-xs font-medium text-zinc-500">Advanced settings</summary>
+                        <div className="mt-4 space-y-4 border-t border-zinc-900 pt-4">
+                          <Field htmlFor="provider-url" label="Base URL" hint={providerForm.kind === "ollama" ? "Change only if Ollama uses another port" : providerForm.kind === "openai-compatible" ? "Your API root or /v1 URL" : "Managed by this preset"}>
+                            <Input
+                              disabled={providerForm.kind !== "ollama" && providerForm.kind !== "openai-compatible"}
+                              id="provider-url"
+                              onChange={(event) => setProviderForm((current) => ({ ...current, baseUrl: event.target.value }))}
+                              required
+                              type="url"
+                              value={providerForm.baseUrl}
+                            />
+                          </Field>
+                          <Field htmlFor="provider-model" label="Model" hint={providerForm.kind === "ollama" ? "Detected from installed Ollama models" : "A working default is already selected"}>
+                            <Input
+                              id="provider-model"
+                              list="provider-models"
+                              maxLength={180}
+                              onChange={(event) => setProviderForm((current) => ({ ...current, model: event.target.value }))}
+                              placeholder={providerForm.kind === "ollama" ? "Detected after connection" : "model-name"}
+                              required={providerForm.kind === "openai-compatible"}
+                              value={providerForm.model}
+                            />
+                            <datalist id="provider-models">{providerModels.map((model) => <option key={model} value={model} />)}</datalist>
+                          </Field>
+                        </div>
+                      </details>
+
+                      <div className="flex flex-col gap-3 border-t border-zinc-900 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-start gap-2 text-[10px] leading-4 text-zinc-600">
+                          <LockKeyhole className="mt-0.5 size-3 shrink-0" />
+                          API keys are encrypted and stay on this device.
+                        </div>
+                        <Button disabled={busy === "provider-test" || !providerCanConnect} type="submit">
+                          {busy === "provider-test" ? <Loader2 className="animate-spin" /> : <PlugZap />}
+                          {busy === "provider-test" ? "Connecting…" : providerForm.kind === "ollama" && !providerForm.model ? "Find local model" : "Connect provider"}
+                        </Button>
                       </div>
                     </form>
                   </CardContent>

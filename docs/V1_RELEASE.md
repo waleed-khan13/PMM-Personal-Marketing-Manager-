@@ -5,7 +5,7 @@ Version 1.0 is the stable, localhost-only social publishing edition. Its promise
 ## Stable v1 capabilities
 
 - Next.js console and FastAPI API bound to loopback, with SQLite WAL persistence and encrypted connector secrets.
-- Ollama and generic OpenAI-compatible text generation.
+- Ready-made Ollama, OpenAI, Gemini, Anthropic, OpenRouter, and NVIDIA text generation plus an advanced generic OpenAI-compatible adapter.
 - OpenAI-compatible Images API, Automatic1111/Forge, and ComfyUI image generation into a reviewed local media library.
 - Dashboard approvals plus Telegram long polling and Slack Socket Mode approval decisions.
 - Immediate and scheduled publishing for Telegram, WordPress, Facebook Pages, Instagram Professional single images, LinkedIn Members, and access-approved LinkedIn Company Pages.

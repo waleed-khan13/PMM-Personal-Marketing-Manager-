@@ -115,7 +115,12 @@ from app.services.image_generation import (
     test_image_provider,
     validate_image_base_url,
 )
-from app.services.provider import generate_content, generate_outreach, test_provider, validate_base_url
+from app.services.provider import (
+    generate_content,
+    generate_outreach,
+    test_provider,
+    validate_provider_base_url,
+)
 from app.services.publishing import publish_to_target, resolve_publish_target
 from app.services.seo_audit import audit_website
 from app.services.telegram import (
@@ -520,10 +525,10 @@ def save_workspace(payload: WorkspaceUpdate) -> dict[str, Any]:
 @app.put("/api/settings/provider")
 def save_provider(payload: ProviderUpdate) -> dict[str, Any]:
     try:
-        validate_base_url(payload.base_url)
+        normalized_url = validate_provider_base_url(payload.kind, payload.base_url)
     except ExternalServiceError as error:
         raise AppError(error.message) from error
-    update_provider(payload)
+    update_provider(payload.model_copy(update={"base_url": normalized_url}))
     return {"ok": True, "state": state_response()}
 
 

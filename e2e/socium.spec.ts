@@ -76,13 +76,13 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByText("Business profile saved")).toBeVisible();
 
-  await page.getByLabel("Adapter").click();
-  await page.getByRole("option", { name: "OpenAI-compatible" }).click();
+  await page.getByLabel("AI service").click();
+  await page.getByRole("option", { name: "Custom OpenAI-compatible" }).click();
   await page.getByLabel("Base URL").fill(mockBaseUrl);
   await page.getByLabel("Model").fill("e2e-model");
   await page.getByLabel("API key").fill("e2e-provider-key");
   const providerForm = page.getByLabel("Base URL").locator("xpath=ancestor::form");
-  await providerForm.getByRole("button", { name: "Save & test" }).click();
+  await providerForm.getByRole("button", { name: "Connect provider" }).click();
   await expect(page.getByText("Provider connected with 1 visible model(s).")).toBeVisible();
 
   const wordpressForm = page.getByLabel("Site URL").locator("xpath=ancestor::form");
@@ -583,6 +583,47 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
       ],
     },
   });
+});
+
+test("offers simple prebuilt AI providers without a Socium account", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Growth command" })).toBeVisible();
+  await navigate(page, "Integrations", "Connections");
+
+  const providerCard = page
+    .getByText("AI provider", { exact: true })
+    .locator('xpath=ancestor::div[@data-slot="card"]');
+  const providerSelect = providerCard.getByLabel("AI service");
+
+  await providerSelect.click();
+  await page.getByRole("option", { name: "OpenAI", exact: true }).click();
+  await expect(providerCard.getByText("gpt-5.6-luna", { exact: true })).toBeVisible();
+  await expect(providerCard.getByText("No Socium account required", { exact: true })).toBeVisible();
+  await expect(providerCard.getByRole("button", { name: "Connect provider" })).toBeDisabled();
+  await providerCard.getByLabel("API key").fill("test-only-key");
+  await expect(providerCard.getByRole("button", { name: "Connect provider" })).toBeEnabled();
+
+  for (const [option, model] of [
+    ["Google Gemini", "gemini-3.7-flash"],
+    ["Claude (Anthropic)", "claude-sonnet-4-6"],
+    ["OpenRouter", "openrouter/free"],
+    ["NVIDIA NIM", "meta/llama-3.1-8b-instruct"],
+  ] as const) {
+    await providerSelect.click();
+    await page.getByRole("option", { name: option }).click();
+    await expect(providerCard.getByText(model, { exact: true })).toBeVisible();
+  }
+
+  await providerSelect.click();
+  await page.getByRole("option", { name: "Local AI (Ollama)" }).click();
+  await expect(providerCard.getByText("Model auto-detect", { exact: true })).toBeVisible();
+  await expect(providerCard.getByRole("button", { name: "Find local model" })).toBeEnabled();
+  await expect(providerCard.getByLabel("API key")).toHaveCount(0);
+
+  await providerSelect.click();
+  await page.getByRole("option", { name: "Custom OpenAI-compatible" }).click();
+  await expect(providerCard.getByLabel("Base URL")).toBeVisible();
+  await expect(providerCard.getByLabel("Model")).toBeVisible();
 });
 
 test("manages a real local media asset and hands its HTTPS source to a draft", async ({ page }) => {

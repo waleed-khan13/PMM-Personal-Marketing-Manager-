@@ -32,9 +32,17 @@ class WorkspaceUpdate(ApiModel):
 
 
 class ProviderUpdate(ApiModel):
-    kind: Literal["ollama", "openai-compatible"]
+    kind: Literal[
+        "ollama",
+        "openai",
+        "gemini",
+        "anthropic",
+        "openrouter",
+        "nvidia",
+        "openai-compatible",
+    ]
     base_url: str = Field(min_length=1, max_length=2_048)
-    model: str = Field(min_length=1, max_length=180)
+    model: str = Field(default="", max_length=180)
     api_key: str = Field(default="", max_length=2_000)
 
 
