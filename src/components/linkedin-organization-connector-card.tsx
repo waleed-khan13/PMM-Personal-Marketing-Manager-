@@ -15,6 +15,7 @@ import {
 import type { FormEvent, ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -189,6 +190,11 @@ export function LinkedInOrganizationConnectorCard({
                   required={!account?.secretStatus.access_token}
                   type="password"
                   value={form.accessToken}
+                />
+                <CredentialHelp
+                  description="Create/open a LinkedIn app linked to the Company Page, request the required organization products/scopes, then authorize a Page admin through OAuth."
+                  primary={{ href: "https://www.linkedin.com/developers/apps", label: "LinkedIn apps" }}
+                  secondary={{ href: "https://www.linkedin.com/developers/tools/oauth/token-generator", label: "Token generator" }}
                 />
               </Field>
             </div>

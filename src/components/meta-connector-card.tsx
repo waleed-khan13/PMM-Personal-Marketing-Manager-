@@ -14,6 +14,7 @@ import {
 import type { FormEvent, ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -174,6 +175,11 @@ export function MetaConnectorCard({
                 required={!account?.secretStatus.page_access_token}
                 type="password"
                 value={form.pageAccessToken}
+              />
+              <CredentialHelp
+                description="Create/open a Meta app, add Facebook Login/Pages permissions, then use Graph API Explorer to obtain a Page token for this Page."
+                primary={{ href: "https://developers.facebook.com/tools/explorer/", label: "Graph API Explorer" }}
+                secondary={{ href: "https://developers.facebook.com/apps/", label: "Meta apps" }}
               />
             </Field>
           </div>

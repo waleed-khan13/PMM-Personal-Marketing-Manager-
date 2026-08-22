@@ -44,6 +44,7 @@ import { toast } from "sonner";
 
 import { LeadsWorkspace } from "@/components/leads-workspace";
 import { MediaLibrary } from "@/components/media-library";
+import { CredentialHelp } from "@/components/credential-help";
 import {
   InstagramConnectorCard,
   type InstagramConnectorForm,
@@ -2213,6 +2214,22 @@ export function GrowthConsole() {
 
           {!loading && appState && activeView === "integrations" ? (
             <div className="space-y-4">
+              <Card className="border-amber-500/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.09),transparent_42%),#070707]">
+                <CardContent className="flex flex-col gap-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-start gap-3">
+                    <PlugZap className="mt-0.5 size-4 shrink-0 text-amber-300" />
+                    <div>
+                      <p className="text-sm font-medium text-zinc-100">Connect only what you use</p>
+                      <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">One AI provider is enough. Dashboard approval is built in; Telegram, Slack, WhatsApp, and every publishing destination are optional. You never need to configure every connector.</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Badge className="border-emerald-500/25 bg-emerald-500/8 text-emerald-300" variant="outline">1 AI REQUIRED</Badge>
+                    <Badge className="border-zinc-700 text-zinc-500" variant="outline">ALL OTHERS OPTIONAL</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="border-b border-zinc-900">
                   <div className="flex items-center gap-3">
@@ -2295,6 +2312,12 @@ export function GrowthConsole() {
                         </Field>
                       ) : null}
 
+                      <CredentialHelp
+                        description={selectedProvider.credentialHelp}
+                        primary={{ href: selectedProvider.credentialUrl, label: selectedProvider.credentialLabel }}
+                        secondary={selectedProvider.docsUrl ? { href: selectedProvider.docsUrl, label: providerForm.kind === "ollama" ? "Browse models" : "Official guide" } : undefined}
+                      />
+
                       <details className="rounded-md border border-zinc-900 bg-black px-3 py-2.5" key={providerForm.kind} open={providerForm.kind === "openai-compatible" ? true : undefined}>
                         <summary className="cursor-pointer text-xs font-medium text-zinc-500">Advanced settings</summary>
                         <div className="mt-4 space-y-4 border-t border-zinc-900 pt-4">
@@ -2348,6 +2371,11 @@ export function GrowthConsole() {
                   <CardContent>
                     <form className="space-y-4" onSubmit={(event) => void saveTelegram(event)}>
                       <Field htmlFor="bot-token" label="Bot token" hint={appState.telegram.hasBotToken ? "Stored — blank keeps current token" : "From @BotFather"}><Input autoComplete="off" id="bot-token" onChange={(event) => setTelegramForm((current) => ({ ...current, botToken: event.target.value }))} placeholder={appState.telegram.hasBotToken ? "••••••••••••" : "123456:ABC…"} type="password" value={telegramForm.botToken} /></Field>
+                      <CredentialHelp
+                        description="Open @BotFather, send /newbot, finish the prompts, then paste the bot token above. Message the new bot once before testing."
+                        primary={{ href: "https://t.me/BotFather", label: "Open @BotFather" }}
+                        secondary={{ href: "https://core.telegram.org/bots/tutorial", label: "Official guide" }}
+                      />
                       <Field htmlFor="chat-id" label="Approval chat ID" hint="User, group, or channel"><Input id="chat-id" maxLength={160} onChange={(event) => setTelegramForm((current) => ({ ...current, chatId: event.target.value }))} placeholder="-1001234567890" required value={telegramForm.chatId} /></Field>
                       <div className="space-y-3 rounded-md border border-zinc-800 bg-black p-3">
                         <div className="flex items-start gap-3">
@@ -2400,6 +2428,12 @@ export function GrowthConsole() {
                       <Field htmlFor="slack-bot-token" label="Bot token" hint={slackAccount?.secretStatus.bot_token ? "Stored securely — blank keeps it" : "Slack OAuth bot token"}><Input autoComplete="new-password" id="slack-bot-token" onChange={(event) => setSlackForm((current) => ({ ...current, botToken: event.target.value }))} placeholder={slackAccount?.secretStatus.bot_token ? "••••••••••••" : "xoxb-…"} required={!slackAccount?.secretStatus.bot_token} type="password" value={slackForm.botToken} /></Field>
                       <Field htmlFor="slack-app-token" label="App token" hint={slackAccount?.secretStatus.app_token ? "Stored securely — blank keeps it" : "Socket Mode app token"}><Input autoComplete="new-password" id="slack-app-token" onChange={(event) => setSlackForm((current) => ({ ...current, appToken: event.target.value }))} placeholder={slackAccount?.secretStatus.app_token ? "••••••••••••" : "xapp-…"} required={!slackAccount?.secretStatus.app_token} type="password" value={slackForm.appToken} /></Field>
                     </div>
+
+                    <CredentialHelp
+                      description="Create/open a Slack app. Install it to get the xoxb bot token; enable Socket Mode and create an app-level token with connections:write for the xapp token."
+                      primary={{ href: "https://api.slack.com/apps", label: "Open Slack apps" }}
+                      secondary={{ href: "https://api.slack.com/concepts/token-types", label: "Token guide" }}
+                    />
 
                     <div className="flex items-center justify-between gap-4 rounded-md border border-zinc-800 bg-black p-3">
                       <div>

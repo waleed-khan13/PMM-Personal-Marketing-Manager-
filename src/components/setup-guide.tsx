@@ -138,13 +138,14 @@ export function SetupGuide({
       onAction: onOpenConnections,
     },
     {
-      action: "Configure approvals",
+      action: "Add remote approvals",
       complete: approvalReady,
-      description: "Connect Telegram or Slack so every generated revision can reach a human reviewer.",
-      detail: "Telegram needs a bot token, chat ID, and polling enabled. Slack needs bot/app tokens, Socket Mode, and an invited approval channel.",
+      description: "Dashboard approval works without another connector. Add Telegram or Slack only if reviews should reach another app.",
+      detail: "Optional: Telegram needs a bot token, chat ID, and polling enabled. Slack needs bot/app tokens, Socket Mode, and an invited approval channel.",
       icon: MessageCircle,
-      label: "Choose an approval channel",
+      label: "Connect an external approval channel",
       onAction: onOpenConnections,
+      optional: true,
     },
     {
       action: "Connect a publisher",

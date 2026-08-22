@@ -15,6 +15,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -212,6 +213,13 @@ export function LeadDiscoveryPanel({
               <div className="space-y-2"><Label htmlFor="places-region">Region code</Label><Input id="places-region" maxLength={2} onChange={(event) => setConnection((current) => ({ ...current, regionCode: event.target.value.toUpperCase() }))} placeholder="PK" value={connection.regionCode} /></div>
               <div className="space-y-2"><Label htmlFor="places-language">Language</Label><Input id="places-language" maxLength={10} onChange={(event) => setConnection((current) => ({ ...current, languageCode: event.target.value }))} placeholder="en" value={connection.languageCode} /></div>
               <div className="space-y-2"><Label htmlFor="places-key">API key</Label><Input autoComplete="new-password" id="places-key" onChange={(event) => setConnection((current) => ({ ...current, apiKey: event.target.value }))} placeholder={account?.secretStatus.api_key ? "Stored — blank keeps it" : "AIza…"} required={!account?.secretStatus.api_key} type="password" value={connection.apiKey} /></div>
+            </div>
+            <div className="mt-3">
+              <CredentialHelp
+                description="In Google Cloud select a project, enable Places API (New), create an API key, then restrict that key to Places API (New)."
+                primary={{ href: "https://console.cloud.google.com/apis/credentials", label: "Google credentials" }}
+                secondary={{ href: "https://console.cloud.google.com/apis/library/places-backend.googleapis.com", label: "Enable Places API" }}
+              />
             </div>
             {account?.lastError ? <p className="mt-3 text-xs text-red-300">{account.lastError}</p> : null}
             <div className="mt-4 flex justify-end"><Button disabled={busy === "connection"} type="submit">{busy === "connection" ? <Loader2 className="animate-spin" /> : <Check />}Save & test</Button></div>

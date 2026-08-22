@@ -15,6 +15,7 @@ import {
 import type { FormEvent, ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -175,6 +176,11 @@ export function InstagramConnectorCard({
                 required={!account?.secretStatus.access_token}
                 type="password"
                 value={form.accessToken}
+              />
+              <CredentialHelp
+                description="Create/open a Meta app, add the Instagram product, configure Instagram Login, and generate a token for the Professional account."
+                primary={{ href: "https://developers.facebook.com/apps/", label: "Open Meta apps" }}
+                secondary={{ href: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/", label: "Official guide" }}
               />
             </Field>
           </div>

@@ -66,6 +66,8 @@ test("runs real publishing workflows and a WhatsApp draft notification", async (
   expect(releaseState.runtime.version).toBe("1.0.5");
 
   await navigate(page, "Integrations", "Connections");
+  await expect(page.getByText("Connect only what you use", { exact: true })).toBeVisible();
+  await expect(page.getByText("ALL OTHERS OPTIONAL", { exact: true })).toBeVisible();
 
   await page.getByLabel("Workspace name").fill("E2E workspace");
   await page.getByLabel("Business name").fill("Northstar Studio");
@@ -599,24 +601,27 @@ test("offers simple prebuilt AI providers without a Socium account", async ({ pa
   await page.getByRole("option", { name: "OpenAI", exact: true }).click();
   await expect(providerCard.getByText("gpt-5.6-luna", { exact: true })).toBeVisible();
   await expect(providerCard.getByText("No Socium account required", { exact: true })).toBeVisible();
+  await expect(providerCard.getByRole("link", { name: "Get OpenAI key" })).toHaveAttribute("href", "https://platform.openai.com/api-keys");
   await expect(providerCard.getByRole("button", { name: "Connect provider" })).toBeDisabled();
   await providerCard.getByLabel("API key").fill("test-only-key");
   await expect(providerCard.getByRole("button", { name: "Connect provider" })).toBeEnabled();
 
-  for (const [option, model] of [
-    ["Google Gemini", "gemini-3.7-flash"],
-    ["Claude (Anthropic)", "claude-sonnet-4-6"],
-    ["OpenRouter", "openrouter/free"],
-    ["NVIDIA NIM", "meta/llama-3.1-8b-instruct"],
+  for (const [option, model, credentialLabel, credentialUrl] of [
+    ["Google Gemini", "gemini-3.7-flash", "Get Gemini key", "https://aistudio.google.com/apikey"],
+    ["Claude (Anthropic)", "claude-sonnet-4-6", "Get Claude key", "https://platform.claude.com/settings/keys"],
+    ["OpenRouter", "openrouter/free", "Get OpenRouter key", "https://openrouter.ai/settings/keys"],
+    ["NVIDIA NIM", "meta/llama-3.1-8b-instruct", "Get NVIDIA key", "https://build.nvidia.com/settings/api-keys"],
   ] as const) {
     await providerSelect.click();
     await page.getByRole("option", { name: option }).click();
     await expect(providerCard.getByText(model, { exact: true })).toBeVisible();
+    await expect(providerCard.getByRole("link", { name: credentialLabel })).toHaveAttribute("href", credentialUrl);
   }
 
   await providerSelect.click();
   await page.getByRole("option", { name: "Local AI (Ollama)" }).click();
   await expect(providerCard.getByText("Model auto-detect", { exact: true })).toBeVisible();
+  await expect(providerCard.getByRole("link", { name: "Download Ollama" })).toHaveAttribute("href", "https://ollama.com/download");
   await expect(providerCard.getByRole("button", { name: "Find local model" })).toBeEnabled();
   await expect(providerCard.getByLabel("API key")).toHaveCount(0);
 
@@ -624,6 +629,13 @@ test("offers simple prebuilt AI providers without a Socium account", async ({ pa
   await page.getByRole("option", { name: "Custom OpenAI-compatible" }).click();
   await expect(providerCard.getByLabel("Base URL")).toBeVisible();
   await expect(providerCard.getByLabel("Model")).toBeVisible();
+
+  await expect(page.getByRole("link", { name: "Open @BotFather" })).toHaveAttribute("href", "https://t.me/BotFather");
+  await expect(page.getByRole("link", { name: "Open Slack apps" })).toHaveAttribute("href", "https://api.slack.com/apps");
+  await expect(page.getByRole("link", { name: "Application password guide", exact: true })).toHaveAttribute("href", "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/");
+  await expect(page.getByRole("link", { name: "Graph API Explorer", exact: true })).toHaveAttribute("href", "https://developers.facebook.com/tools/explorer/");
+  await expect(page.getByRole("link", { name: "System users", exact: true })).toHaveAttribute("href", "https://business.facebook.com/settings/system-users");
+  await expect(page.getByRole("link", { name: "Token generator", exact: true }).first()).toHaveAttribute("href", "https://www.linkedin.com/developers/tools/oauth/token-generator");
 });
 
 test("manages a real local media asset and hands its HTTPS source to a draft", async ({ page }) => {
@@ -634,6 +646,7 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
 
   await page.getByLabel("Adapter").click();
   await page.getByRole("option", { name: "OpenAI-compatible Images API" }).click();
+  await expect(page.getByRole("link", { name: "Get OpenAI key" })).toHaveAttribute("href", "https://platform.openai.com/api-keys");
   await page.getByLabel("Base URL").fill(`${mockBaseUrl}/v1`);
   await page.getByLabel("Model").fill("e2e-image-model");
   await page.getByLabel("API key").fill("e2e-image-key");

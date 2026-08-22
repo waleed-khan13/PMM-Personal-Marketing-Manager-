@@ -8,6 +8,10 @@ export type ProviderPreset = {
   defaultModel: string;
   apiKeyRequired: boolean;
   keyPlaceholder: string;
+  credentialUrl: string;
+  credentialLabel: string;
+  credentialHelp: string;
+  docsUrl?: string;
 };
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -19,6 +23,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "",
     apiKeyRequired: false,
     keyPlaceholder: "",
+    credentialUrl: "https://ollama.com/download",
+    credentialLabel: "Download Ollama",
+    credentialHelp: "Ollama runs locally and does not need an API key. Install it, pull a model, then let Socium detect it.",
+    docsUrl: "https://ollama.com/library",
   },
   {
     kind: "openai",
@@ -28,6 +36,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "gpt-5.6-luna",
     apiKeyRequired: true,
     keyPlaceholder: "sk-…",
+    credentialUrl: "https://platform.openai.com/api-keys",
+    credentialLabel: "Get OpenAI key",
+    credentialHelp: "Sign in to the OpenAI Platform, create a secret key, and paste it above. A ChatGPT subscription is separate from API billing.",
+    docsUrl: "https://platform.openai.com/docs/quickstart",
   },
   {
     kind: "gemini",
@@ -37,6 +49,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "gemini-3.7-flash",
     apiKeyRequired: true,
     keyPlaceholder: "AIza…",
+    credentialUrl: "https://aistudio.google.com/apikey",
+    credentialLabel: "Get Gemini key",
+    credentialHelp: "Open Google AI Studio, create an API key for a project, and paste it above.",
+    docsUrl: "https://ai.google.dev/gemini-api/docs/api-key",
   },
   {
     kind: "anthropic",
@@ -46,6 +62,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "claude-sonnet-4-6",
     apiKeyRequired: true,
     keyPlaceholder: "sk-ant-…",
+    credentialUrl: "https://platform.claude.com/settings/keys",
+    credentialLabel: "Get Claude key",
+    credentialHelp: "Open the Claude Console API Keys page, create a key, and paste it above.",
+    docsUrl: "https://platform.claude.com/docs/en/api/getting-started",
   },
   {
     kind: "openrouter",
@@ -55,6 +75,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "openrouter/free",
     apiKeyRequired: true,
     keyPlaceholder: "sk-or-v1-…",
+    credentialUrl: "https://openrouter.ai/settings/keys",
+    credentialLabel: "Get OpenRouter key",
+    credentialHelp: "Open OpenRouter Keys, create a key, and paste it above. You can keep the free model router selected.",
+    docsUrl: "https://openrouter.ai/docs/quickstart",
   },
   {
     kind: "nvidia",
@@ -64,6 +88,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "meta/llama-3.1-8b-instruct",
     apiKeyRequired: true,
     keyPlaceholder: "nvapi-…",
+    credentialUrl: "https://build.nvidia.com/settings/api-keys",
+    credentialLabel: "Get NVIDIA key",
+    credentialHelp: "Sign in to NVIDIA Build, generate an API key, and paste it above.",
+    docsUrl: "https://docs.api.nvidia.com/nim/reference/llm-apis",
   },
   {
     kind: "openai-compatible",
@@ -73,6 +101,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: "",
     apiKeyRequired: false,
     keyPlaceholder: "Optional API key",
+    credentialUrl: "https://github.com/ggml-org/llama.cpp/blob/master/examples/server/README.md",
+    credentialLabel: "Setup guide",
+    credentialHelp: "LocalAI, LM Studio, llama.cpp, and other compatible servers usually need no key. Use the documentation for your chosen server.",
   },
 ];
 

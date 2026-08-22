@@ -15,6 +15,7 @@ import {
 import type { FormEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -53,6 +54,19 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(value),
   );
+}
+
+function wordpressProfileUrl(siteUrl: string) {
+  try {
+    const url = new URL(siteUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/wp-admin/profile.php`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function Field({
@@ -111,6 +125,7 @@ export function WordPressConnectorCard({
   const saving = busy === "wordpress-save";
   const testing = busy === "wordpress-test";
   const deleting = busy === "wordpress-delete";
+  const profileUrl = wordpressProfileUrl(form.siteUrl);
 
   return (
     <Card className="overflow-hidden border-zinc-800 bg-[#070707]">
@@ -177,6 +192,11 @@ export function WordPressConnectorCard({
                 required={!account?.secretStatus.application_password}
                 type="password"
                 value={form.applicationPassword}
+              />
+              <CredentialHelp
+                description="Sign in to WordPress, open Users → Profile, find Application Passwords, name it Socium, and copy the generated password. Never enter your normal login password."
+                primary={{ href: profileUrl ?? "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/", label: profileUrl ? "Open WP profile" : "Application password guide" }}
+                secondary={profileUrl ? { href: "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/", label: "Official guide" } : undefined}
               />
             </Field>
           </div>

@@ -142,10 +142,12 @@ Complete the checklist in the dashboard:
 
 1. Add the business profile.
 2. Open **Integrations → AI provider**, choose a service, paste that service's API key, and select **Connect provider**. Ollama needs no key and detects installed local models automatically.
-3. Optionally connect a Telegram bot and chat.
-4. Start the local Telegram approval listener.
-5. Generate and review a Telegram draft, then approve it.
+3. Generate a draft and approve it in the built-in dashboard; no approval connector is required.
+4. Optionally connect Telegram or Slack if approvals should also reach another app.
+5. Connect only the publishing destination you want to use; the other connectors can stay unconfigured.
 6. Publish immediately or schedule the exact approved revision from the local queue.
+
+Every credential field in the UI includes its official **Get key/token** page and short setup instructions. The complete provider-by-provider directory is in [Connector credentials](docs/CREDENTIALS.md).
 
 Socium fills the official endpoint and a working default model for OpenAI, Gemini, Claude, OpenRouter, and NVIDIA. Open **Advanced settings** only to change the model, change Ollama's local port, or configure LM Studio, LocalAI, and other custom OpenAI-compatible servers. Hosted preset keys are never sent to a user-entered URL, are encrypted before SQLite storage, and remain on this computer. Socium has no hosted login or cloud account requirement.
 
@@ -252,6 +254,7 @@ pnpm check
 - `docs/PRODUCT.md` — product boundaries, features, and core concepts.
 - `docs/ARCHITECTURE.md` — localhost runtime and adapter contracts.
 - `docs/ROADMAP.md` — milestones and acceptance criteria.
+- `docs/CREDENTIALS.md` — exact official credential portals, connector requirements, and token-safety steps.
 - `docs/COMPLIANCE.md` — discovery, publishing, outreach, and retention guardrails.
 - `docs/TERMS.md` and `docs/PRIVACY.md` — localhost product/provider terms and data-flow disclosure.
 - `design-system/socium/MASTER.md` — persisted visual system.

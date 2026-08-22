@@ -15,6 +15,7 @@ import {
 import type { FormEvent, ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -212,6 +213,11 @@ export function WhatsAppConnectorCard({
                   required={!account?.secretStatus.access_token}
                   type="password"
                   value={form.accessToken}
+                />
+                <CredentialHelp
+                  description="In Meta Business Settings create/select a system user, assign the WhatsApp app and assets, then generate a permanent token with WhatsApp permissions."
+                  primary={{ href: "https://business.facebook.com/settings/system-users", label: "System users" }}
+                  secondary={{ href: "https://developers.facebook.com/apps/", label: "Meta apps" }}
                 />
               </Field>
             </div>

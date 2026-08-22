@@ -26,6 +26,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { CredentialHelp } from "@/components/credential-help";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -470,6 +471,18 @@ export function MediaLibrary({ imageProvider, onStateChange, onUseInDraft }: Pro
               <div className="space-y-2"><Label htmlFor="image-provider-model">Model {imageProviderForm.kind !== "openai-images" ? "(optional label/checkpoint)" : ""}</Label><Input id="image-provider-model" onChange={(event) => setImageProviderForm((current) => ({ ...current, model: event.target.value }))} placeholder={imageProviderForm.kind === "automatic1111" ? "Use active checkpoint" : imageProviderForm.kind === "comfyui" ? "Workflow model" : "gpt-image-2"} required={imageProviderForm.kind === "openai-images"} value={imageProviderForm.model} /></div>
               {imageProviderForm.kind === "comfyui" ? <div className="space-y-2"><Label htmlFor="comfy-workflow">Workflow (API format JSON)</Label><Textarea className="min-h-32 font-mono text-[11px]" id="comfy-workflow" maxLength={200000} onChange={(event) => setImageProviderForm((current) => ({ ...current, workflowJson: event.target.value }))} placeholder={imageProvider.hasWorkflow ? "Stored workflow — leave blank to keep it" : "Paste ComfyUI's Save (API Format) JSON. Replace values with {{prompt}}, {{negative_prompt}}, {{seed}}, {{width}}, {{height}}, {{steps}}, or {{guidance_scale}}."} value={imageProviderForm.workflowJson} /><p className="text-[10px] leading-4 text-zinc-600">The workflow stays on this computer. Socium injects only declared placeholders and reads the first image output.</p></div> : null}
               <div className="space-y-2"><Label htmlFor="image-provider-key">API key</Label><Input autoComplete="off" id="image-provider-key" onChange={(event) => setImageProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder={imageProvider.hasApiKey ? "Stored — blank keeps current key" : "Optional for local; required by most hosted APIs"} type="password" value={imageProviderForm.apiKey} /><p className="text-[10px] text-zinc-600">{imageProviderForm.kind === "automatic1111" ? "For WebUI --api-auth, enter username:password." : "Sent only as a bearer header and encrypted at rest."}</p></div>
+              {imageProviderForm.kind === "openai-images" ? (
+                <CredentialHelp
+                  description="For OpenAI's Images API, create a Platform API key and paste it above. A ChatGPT subscription does not include API credits."
+                  primary={{ href: "https://platform.openai.com/api-keys", label: "Get OpenAI key" }}
+                  secondary={{ href: "https://platform.openai.com/docs/guides/images", label: "Images guide" }}
+                />
+              ) : (
+                <CredentialHelp
+                  description={imageProviderForm.kind === "automatic1111" ? "This local server has no provider token. Only enter username:password if you started WebUI with --api-auth." : "ComfyUI runs locally and has no provider token. Leave the API key blank unless your own proxy requires one."}
+                  primary={{ href: imageProviderForm.kind === "automatic1111" ? "https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/API" : "https://docs.comfy.org/development/core-concepts/api-server", label: "Local setup guide" }}
+                />
+              )}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(false)} type="button" variant="outline">{busy === "image-provider-save" ? <Loader2 className="animate-spin" /> : <Check />} Save</Button>
                 <Button disabled={busy === "image-provider-save" || busy === "image-provider-test"} onClick={() => void saveImageProvider(true)} type="button">{busy === "image-provider-test" ? <Loader2 className="animate-spin" /> : <PlugZap />} Save & test</Button>
