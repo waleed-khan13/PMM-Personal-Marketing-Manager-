@@ -16,6 +16,7 @@ const helpText = `Socium ${CLI_VERSION}
 Usage:
   socium onboard [--manifest URL] [--install-only] [--no-open]
   socium start [--port 3000] [--api-port 8000] [--no-open] [--labs]
+  socium run [--port 3000] [--api-port 8000] [--no-open] [--labs]  (alias for start)
   socium update [--manifest URL] [--force]
   socium doctor [--json]
   socium uninstall --yes [--purge-data]

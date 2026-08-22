@@ -59,10 +59,67 @@ Requirements:
 Windows, macOS, and Linux users do not need Docker, Python, uv, pnpm, or a source checkout:
 
 ```bash
-npx socium onboard
+npx socium@latest onboard
 ```
 
 The command downloads the bundle for the current operating system and CPU, verifies its published SHA-256 checksum, keeps the runtime separate from business data, starts both services on loopback, and opens [http://127.0.0.1:3000](http://127.0.0.1:3000). Updates and normal uninstalls preserve the SQLite database, encryption key, media, and exports. See [docs/INSTALLATION.md](docs/INSTALLATION.md) for paths, lifecycle commands, troubleshooting, and permanent removal.
+
+### Start or run Socium later
+
+```bash
+npx socium start
+```
+
+`run` is an alias for the same command:
+
+```bash
+npx socium run
+```
+
+Keep that terminal open while using Socium. The browser opens at [http://127.0.0.1:3000](http://127.0.0.1:3000). Press `Ctrl+C` in the terminal to stop the local API and web app. Add `--no-open` if you do not want Socium to open the browser automatically.
+
+### Update Socium
+
+Stop a running Socium process with `Ctrl+C`, then run:
+
+```bash
+npx socium@latest update
+```
+
+The update verifies and activates the newest runtime while preserving the local SQLite database, encryption key, settings, media, and exports. If an installation is incomplete or damaged, repair it with:
+
+```bash
+npx socium@latest update --force
+```
+
+### Check the installation
+
+```bash
+npx socium doctor
+npx socium version
+```
+
+`doctor` checks the installed runtime, local data directory, and default ports. `version` prints the CLI version.
+
+### Remove Socium but keep local data
+
+Stop Socium first, then run:
+
+```bash
+npx socium uninstall --yes
+```
+
+This removes the downloaded program runtime but deliberately keeps the database, encryption key, settings, media, and exports. Running `npx socium@latest onboard` later reinstalls Socium without intentionally deleting that preserved data.
+
+### Permanently remove Socium and all local data
+
+> **Warning:** This permanently deletes Socium's SQLite database, encryption key, settings, media, exports, downloads, and installed runtimes from the Socium application directory.
+
+```bash
+npx socium uninstall --yes --purge-data
+```
+
+Back up the complete Socium `data` directory before using `--purge-data`. The SQLite database and its matching `master.key` must be backed up and restored together.
 
 ## Run from source
 
