@@ -179,7 +179,7 @@ export function InstagramConnectorCard({
               />
               <CredentialHelp
                 description="Create/open a Meta app, add the Instagram product, configure Instagram Login, and generate a token for the Professional account."
-                primary={{ href: "https://developers.facebook.com/apps/", label: "Open Meta apps" }}
+                primary={{ href: "https://developers.facebook.com/apps/", label: "Get Instagram token" }}
                 secondary={{ href: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/", label: "Official guide" }}
               />
             </Field>

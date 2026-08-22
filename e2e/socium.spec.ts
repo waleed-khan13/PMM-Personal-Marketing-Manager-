@@ -630,12 +630,15 @@ test("offers simple prebuilt AI providers without a Socium account", async ({ pa
   await expect(providerCard.getByLabel("Base URL")).toBeVisible();
   await expect(providerCard.getByLabel("Model")).toBeVisible();
 
-  await expect(page.getByRole("link", { name: "Open @BotFather" })).toHaveAttribute("href", "https://t.me/BotFather");
-  await expect(page.getByRole("link", { name: "Open Slack apps" })).toHaveAttribute("href", "https://api.slack.com/apps");
-  await expect(page.getByRole("link", { name: "Application password guide", exact: true })).toHaveAttribute("href", "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/");
-  await expect(page.getByRole("link", { name: "Graph API Explorer", exact: true })).toHaveAttribute("href", "https://developers.facebook.com/tools/explorer/");
-  await expect(page.getByRole("link", { name: "System users", exact: true })).toHaveAttribute("href", "https://business.facebook.com/settings/system-users");
-  await expect(page.getByRole("link", { name: "Token generator", exact: true }).first()).toHaveAttribute("href", "https://www.linkedin.com/developers/tools/oauth/token-generator");
+  const telegramCard = page.getByText("Telegram", { exact: true }).locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(telegramCard.getByRole("link", { name: "Get bot token" })).toHaveAttribute("href", "https://t.me/BotFather");
+  const slackCard = page.getByText("Slack approval connector", { exact: true }).locator('xpath=ancestor::div[@data-slot="card"]');
+  await expect(slackCard.getByRole("link", { name: "Get bot token" })).toHaveAttribute("href", "https://api.slack.com/apps");
+  await expect(slackCard.getByRole("link", { name: "Get app token" })).toHaveAttribute("href", "https://api.slack.com/apps");
+  await expect(page.getByRole("link", { name: "Application password steps", exact: true })).toHaveAttribute("href", "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/");
+  await expect(page.getByRole("link", { name: "Get Page token", exact: true })).toHaveAttribute("href", "https://developers.facebook.com/tools/explorer/");
+  await expect(page.getByRole("link", { name: "Get permanent token", exact: true })).toHaveAttribute("href", "https://business.facebook.com/settings/system-users");
+  await expect(page.getByRole("link", { name: "Get OAuth token", exact: true }).first()).toHaveAttribute("href", "https://www.linkedin.com/developers/tools/oauth/token-generator");
 });
 
 test("manages a real local media asset and hands its HTTPS source to a draft", async ({ page }) => {
@@ -646,7 +649,7 @@ test("manages a real local media asset and hands its HTTPS source to a draft", a
 
   await page.getByLabel("Adapter").click();
   await page.getByRole("option", { name: "OpenAI-compatible Images API" }).click();
-  await expect(page.getByRole("link", { name: "Get OpenAI key" })).toHaveAttribute("href", "https://platform.openai.com/api-keys");
+  await expect(page.getByRole("link", { name: "Get Images API key" })).toHaveAttribute("href", "https://platform.openai.com/api-keys");
   await page.getByLabel("Base URL").fill(`${mockBaseUrl}/v1`);
   await page.getByLabel("Model").fill("e2e-image-model");
   await page.getByLabel("API key").fill("e2e-image-key");

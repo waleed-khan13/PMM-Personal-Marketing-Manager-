@@ -195,7 +195,7 @@ export function WordPressConnectorCard({
               />
               <CredentialHelp
                 description="Sign in to WordPress, open Users → Profile, find Application Passwords, name it Socium, and copy the generated password. Never enter your normal login password."
-                primary={{ href: profileUrl ?? "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/", label: profileUrl ? "Open WP profile" : "Application password guide" }}
+                primary={{ href: profileUrl ?? "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/", label: profileUrl ? "Get application password" : "Application password steps" }}
                 secondary={profileUrl ? { href: "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/", label: "Official guide" } : undefined}
               />
             </Field>

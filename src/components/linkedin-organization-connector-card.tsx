@@ -193,8 +193,8 @@ export function LinkedInOrganizationConnectorCard({
                 />
                 <CredentialHelp
                   description="Create/open a LinkedIn app linked to the Company Page, request the required organization products/scopes, then authorize a Page admin through OAuth."
-                  primary={{ href: "https://www.linkedin.com/developers/apps", label: "LinkedIn apps" }}
-                  secondary={{ href: "https://www.linkedin.com/developers/tools/oauth/token-generator", label: "Token generator" }}
+                  primary={{ href: "https://www.linkedin.com/developers/apps", label: "Open approved app" }}
+                  secondary={{ href: "https://www.linkedin.com/developers/tools/oauth/token-generator", label: "Get OAuth token" }}
                 />
               </Field>
             </div>

@@ -216,7 +216,7 @@ export function WhatsAppConnectorCard({
                 />
                 <CredentialHelp
                   description="In Meta Business Settings create/select a system user, assign the WhatsApp app and assets, then generate a permanent token with WhatsApp permissions."
-                  primary={{ href: "https://business.facebook.com/settings/system-users", label: "System users" }}
+                  primary={{ href: "https://business.facebook.com/settings/system-users", label: "Get permanent token" }}
                   secondary={{ href: "https://developers.facebook.com/apps/", label: "Meta apps" }}
                 />
               </Field>

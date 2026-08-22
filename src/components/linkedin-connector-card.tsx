@@ -179,7 +179,7 @@ export function LinkedInConnectorCard({
               />
               <CredentialHelp
                 description="Create/open a LinkedIn app, enable Share on LinkedIn, then use LinkedIn's OAuth Token Generator and approve the requested member scopes."
-                primary={{ href: "https://www.linkedin.com/developers/tools/oauth/token-generator", label: "Token generator" }}
+                primary={{ href: "https://www.linkedin.com/developers/tools/oauth/token-generator", label: "Get OAuth token" }}
                 secondary={{ href: "https://www.linkedin.com/developers/apps", label: "LinkedIn apps" }}
               />
             </Field>

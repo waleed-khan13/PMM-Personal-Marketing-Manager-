@@ -178,7 +178,7 @@ export function MetaConnectorCard({
               />
               <CredentialHelp
                 description="Create/open a Meta app, add Facebook Login/Pages permissions, then use Graph API Explorer to obtain a Page token for this Page."
-                primary={{ href: "https://developers.facebook.com/tools/explorer/", label: "Graph API Explorer" }}
+                primary={{ href: "https://developers.facebook.com/tools/explorer/", label: "Get Page token" }}
                 secondary={{ href: "https://developers.facebook.com/apps/", label: "Meta apps" }}
               />
             </Field>
